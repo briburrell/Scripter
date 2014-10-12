@@ -1,0 +1,7 @@
+## Title: |c9966ffScripter|cffffff
+## APIVersion: 100009
+## SavedVariables: Scripter_SavedVariables
+libs/LibMediaProvider-1.0/LibMediaProvider-1.0.lua
+ScripterLibGui.lua
+Scripter.lua
+Scripter.xml

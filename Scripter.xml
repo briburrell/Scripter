@@ -1,0 +1,9 @@
+<GuiXml>
+    <Controls>
+        <TopLevelControl name="Scripter">
+            <OnInitialized>
+                ScripterSL_OnInitialized()
+            </OnInitialized>
+        </TopLevelControl>
+    </Controls>
+</GuiXml>

@@ -1,0 +1,24 @@
+Revisions:
+[10/05/2014] Bug: Gaining "VXP" now shows proper exp gained.
+[10/05/2014] New: XP/VXP gains show " - x<#> to level" where <#> is (xp-left-to-level / xp-gained).
+[10/06/2014] Moved "/shelp" to "/scripter"
+[10/06/2014] New: Added default aliases.
+[10/06/2014] New: /alias /clear
+[10/06/2014] New: /timer /delete
+[10/06/2014] New: /command [/clear] [/emote] [/scripter] [<kwd>]
+[10/06/2014] New: /command /desc <cmd> <kwd>
+[10/06/2014] New: /sconfig [afk] [combat] [effect] [inventory] [money]
+[10/06/2014] New: /sgroup [/invite] [/leave]
+[10/07/2014] New: /feedback <text>
+[10/07/2014] New: /eq [/all] [/pack] [/bank] 
+[10/08/2014] New: /score
+[10/08/2014] Renew: /timer
+[10/08/2014] Renew: /afk (toggle)
+[10/10/2014] New: /sconfig sync - toggle automatic sending of mail sync msgs
+[10/10/2014] New: /sconfig sync_mail - toggle whether to retain sync mail msgs
+[10/11/2014] New: /sync [/list] [/scan] <user>
+[10/11/2014] New: /score [/skill] [/userlist] <user>
+[10/11/2014] New: /quest <user>
+[10/11/2014] Renew: /eq [<user>]
+[10/11/2014] New: /score /userlist
+[10/11/2014] Fix: /cmd /desc <cmd> <desc>
