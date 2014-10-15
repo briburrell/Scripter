@@ -1,7 +1,7 @@
 -- Scripter (ESO Add-On)
 -- Copyright 2014 Neo Natura
 
-local LMP = LibStub:GetLibrary("LibMediaProvider-1.0")
+--local LMP = LibStub:GetLibrary("LibMediaProvider-1.0")
 local ScripterLG = ZO_Object:Subclass()
 
 ScripterLibGui = { 
@@ -34,7 +34,8 @@ ScripterLibGui = {
 			height = 264
 		},
 		font = {
-			name = LMP:HashTable("font")["Univers 57"],
+			name = "EsoUI/Common/Fonts/univers57.otf", 
+		--	LMP:HashTable("font")["Univers 57"],
 			height = "14",
 			style = ""
 		},
@@ -266,17 +267,17 @@ function ScripterLibGui.isHidden()
     return savedVars_ScripterlibGui.general.isHidden
 end
 
-function ScripterLibGui.getDefaultFont()
-	for i,v in pairs(LMP:HashTable("font")) do
-		if v == savedVars_ScripterlibGui.font.name then
-			return i
-		end
-	end
-end
-
-function ScripterLibGui.setDefaultFont(value)
-	savedVars_ScripterlibGui.font.name = LMP:HashTable("font")[value]
-end
+-- function ScripterLibGui.getDefaultFont()
+-- 	for i,v in pairs(LMP:HashTable("font")) do
+-- 		if v == savedVars_ScripterlibGui.font.name then
+-- 			return i
+-- 		end
+-- 	end
+-- end
+-- 
+-- function ScripterLibGui.setDefaultFont(value)
+-- 	savedVars_ScripterlibGui.font.name = LMP:HashTable("font")[value]
+-- end
 
 function ScripterLibGui.setFontSize(value)
 	savedVars_ScripterlibGui.font.height = value

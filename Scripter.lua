@@ -5,14 +5,16 @@ if Scripter then return end
 Scripter = {}
 local Scripter = Scripter
 local ScripterSL = ZO_Object:Subclass()
+local Settings
+local scripterVersion = 1.91
 
 -- Localize builtin functions we use 
 local ipairs = ipairs
 local next = next
 local pairs = pairs
 local tinsert = table.insert
-local score_stamp = {}
-local score_span = {}
+local stat_stamp = {}
+local stat_span = {}
 local current_exp = 0
 local current_vexp = 0
 local victim = "unknown"
@@ -25,6 +27,8 @@ local S_CLASS = "Class"
 local S_ALLIANCE = "Alliance"
 local S_LEVEL = "Level"
 local S_XP = "XP"
+
+local ONE_HOUR = 3600
 
 -- 30 days per moon cycle
 local phaseLength = 30
@@ -46,8 +50,7 @@ local function print(...)
 end
 
 local default_help_desc = {
---    ["/abil"] = "Show character's action rates.",
-    ["/afk"] = "Enable \"away from keyboard\" mode.",
+    ["/afk"] = "Manage \"away from keyboard\" mode.",
     ["/alias"] = "Create and manage slash commands.",
     ["/cmd"] = "Display slash commands.",
     ["/eq"] = "Character inventory.",
@@ -58,20 +61,19 @@ local default_help_desc = {
     ["/invite"] = "Perform group invite.",
     ["/leave"] = "Perform group leave",
     ["/loc"] = "Character location information.",
---    ["/lo"] = "Logout active character.",
     ["/log"] = "Manage character activity log.",
     ["/mail"] = "Manage character's mail messages.",
     ["/quest"] = "Display character quest information.",
---    ["/note"] = "Add a note to the character log.",
+    ["/research"] = "Display researchable items.",
     ["/sguild"] = "Display guild character information.",
     ["/sgroup"] = "Manage the character's party group.",
---    ["/quiet"] = "Toggle automatic notification window.",
     ["/rl"] = "Reload user intrface.",
     ["/scripter"] = "Scripter command usage.",
     ["/sconfig"] = "Scripter configuration settings.",
-    ["/score"] = "Character attributes information.",
+    ["/stat"] = "Character attributes information.",
     ["/scmd"] = "List all scripter commands",
     ["/feedback"] = "Submit a Scripter bug or enhancement.",
+    ["/snap"] = "Take a screenshot.",
     ["/sync"] = "Synchronize character attributes.",
     ["/time"] = "Display current time.",
     ["/timer"] = "Manage timed events.",
@@ -81,12 +83,8 @@ local default_help_desc = {
 }
 
 local default_alias_cmd = {
-    ["afk"] = {"sconfig", "afk"},
---    ["abil"] = {"score", "/action"},
     ["invite"] = {"sgroup", "/invite"},
     ["leave"] = {"sgroup", "/leave"},
---    ["note"] = {"log","note:"},
---    ["quiet"] = {"sconfig","quiet"},
     ["rl"] = "reloadui",
     ["scmd"] = {"cmd","/scripter"},
     ["ttime"] = {"time","/game"},
@@ -105,28 +103,16 @@ Scripter.defaults = {
     ["usertime_ptimer"] = {},
     ["usertime_ptimer_span"] = {},
     ["usertime_offset"] = 0,
+    ["usertime_sync_item"] = 0,
+    ["usertime_sync_quest"] = 0,
+    ["usertime_sync_skill"] = 0,
+    ["usertime_sync_trait"] = 0,
     -- dynamic internal variables
     ["buff"] = {},
     ["slot"] = {},
-    ["usertemp_login"] = 0,
     ["usertemp_llogin"] = nil,
     ["usertemp_mail"] = {},
     ["usertemp_money"] = 0,
-    -- persistent user configuration settings
-    ["userconf_afk"] = true,
-    ["userconf_afk_action"] = "sit",
-    ["userconf_autoaccept"] = true,
-    ["userconf_autobind"] = true,
-    ["userconf_junkmode"] = true,
-    ["userconf_log_max"] = 15,
-    ["userconf_quiet"] = false,
-    ["userconf_quiet_book"] = false,
-    ["userconf_quiet_money"] = false,
-    ["userconf_quiet_inventory"] = false,
-    ["userconf_quiet_combat"] = false,
-    ["userconf_quiet_effect"] = false,
-    ["userconf_sync"] = true,
-    ["userconf_sync_mail"] = false,
     -- persistent time saved information.
     ["lmoon"] = {
 	start = 1407553200, -- Unix time of the start of the full moon phase in s
@@ -144,8 +130,6 @@ Scripter.defaults = {
         night = 7200, -- time of only the night ins (2h)
         name = "noon",
     },
-    -- persistent debug info
-    ["debugmode"] = false,
     -- persistent help saved information.
     ["userhelp_desc"] = default_help_desc,
     -- persistent user saved information.
@@ -153,7 +137,7 @@ Scripter.defaults = {
     ["userdata_junk"] = {},
     ["userdata_filter"] = {},
     ["userdata_public"] = {},
-    ["userdata_score"] = {},
+    ["userdata_stat"] = {},
     ["userdata_skill"] = {},
     ["userdata_quest"] = {},
     ["userdata_vendor"] = {},
@@ -162,27 +146,18 @@ Scripter.defaults = {
     ["userdata_item_worn"] = {},
     ["userdata_money"] = 0,
     ["userdata_skill_rate"] = {},
-    ["userdata_sync"] = { 
-        --["@mahnki"] = 0 
-    },
+    ["userdata_sync"] = {},
+    ["userdata_trait"] = {},
     -- persistent character attribute information
     ["chardata_attr"] = {},
     ["chardata_item_worn"] = {},
     ["chardata_quest"] = {}, 
     ["chardata_rating"] = {}, 
     ["chardata_skill"] = {}, 
-    -- timestamp of recent sync updates
     ["chardata_sync"] = {}, 
+    ["chardata_sync_opt"] = {},
+    ["chardata_trait"] = {},
 }
--- todo: userdata_quest[] show chars with same quests
--- todo: userdata_rating[] allow /score /rate +name or -name
--- todo: userdata_score[] allow /score <name> to see char info, anex /friend <name>
--- todo: /friend /add <name>
--- todo: /friend /delete <name>
--- todo: allow "/d" in addition to "/delete"
--- todo: add /null to "do nothing"
-
-Scripter.debug = {}
 
 local itemEquipType = {
     ["Costume"] = EQUIP_TYPE_COSTUME,
@@ -328,45 +303,59 @@ function Scripter.GetItemQualityLabel(val)
     return "unknown"
 end
 
-function Scripter.GetItemTraitLabel(trait, armor)
-    if armor then
-	if trait == 8 then
-		return "Divines"
-	elseif trait == 7 then
-		return "Exploration"
-	elseif trait == 2 then
-		return "Impenetrable"
-	elseif trait == 6 then
-		return "Infused"
-	elseif trait == 3 then
-		return "Reinforced"
-	elseif trait == 1 then
-		return "Sturdy"
-	elseif trait ==  5 then
-		return "Training"
-	elseif trait == 4 then
-		return "WellFitted"
-	end
-    else
-	if trait == 2 then
-		return "Charged"
-	elseif trait == 5 then
-		return "Defending"
-	elseif trait == 4 then
-		return "Infused"
-	elseif trait == 1 then
-		return "Powered"
-	elseif trait == 3 then
-		return "Precise"
-	elseif trait == 7 then
-		return "Sharpened"
-	elseif trait == 6 then
-		return "Training"
-	elseif trait == 8 then
-		return "Weighted"
-	end
+local itemCraftType = {
+    ["Alchemy"] = CRAFTING_TYPE_ALCHEMY,
+    ["Blacksmith"] = CRAFTING_TYPE_BLACKSMITHING,
+    ["Clothier"] = CRAFTING_TYPE_CLOTHIER,
+    ["Enchanting"] = CRAFTING_TYPE_ENCHANTING,
+    ["Provisioning"] = CRAFTING_TYPE_PROVISIONING,
+    ["Woodworker"] = CRAFTING_TYPE_WOODWORKING,
+}
+
+function Scripter.GetItemCraftTypeLabel(craftType)
+    for k,v in pairs(itemCraftType) do
+        if v == craftType then
+            return k
+        end
     end
-    return "unknown"
+    return ("Unknown")
+end
+
+local craftArmorTraitType = {
+}
+local craftJewleryTraitType = {
+}
+local craftTraitType = {
+    [ITEM_TRAIT_TYPE_NONE] = "None",
+    [ITEM_TRAIT_TYPE_ARMOR_DIVINES] = "Divines",
+    [ITEM_TRAIT_TYPE_ARMOR_EXPLORATION] = "Exploration",
+    [ITEM_TRAIT_TYPE_ARMOR_IMPENETRABLE] = "Impenetrable",
+    [ITEM_TRAIT_TYPE_ARMOR_INFUSED] = "Infused",
+    [ITEM_TRAIT_TYPE_ARMOR_ORNATE] = "Ornate",
+    [ITEM_TRAIT_TYPE_ARMOR_REINFORCED] = "Reinforced",
+    [ITEM_TRAIT_TYPE_ARMOR_STURDY] = "Sturdy",
+    [ITEM_TRAIT_TYPE_ARMOR_TRAINING] = "Training",
+    [ITEM_TRAIT_TYPE_ARMOR_WELL_FITTED] = "Well-Fitted",
+    [ITEM_TRAIT_TYPE_JEWELRY_ARCANE] = "Arcane",
+    [ITEM_TRAIT_TYPE_JEWELRY_HEALTHY] = "Healthy",
+    [ITEM_TRAIT_TYPE_JEWELRY_ORNATE] = "Ornate",
+    [ITEM_TRAIT_TYPE_JEWELRY_ROBUST] = "Robust",
+    [ITEM_TRAIT_TYPE_WEAPON_CHARGED] = "Charged",
+    [ITEM_TRAIT_TYPE_WEAPON_DEFENDING] = "Defending",
+    [ITEM_TRAIT_TYPE_WEAPON_INFUSED] = "Infused",
+    [ITEM_TRAIT_TYPE_WEAPON_INTRICATE] = "Intricate",
+    [ITEM_TRAIT_TYPE_WEAPON_ORNATE] = "Ornate",
+    [ITEM_TRAIT_TYPE_WEAPON_POWERED] = "Powered",
+    [ITEM_TRAIT_TYPE_WEAPON_PRECISE] = "Precise",
+    [ITEM_TRAIT_TYPE_WEAPON_SHARPENED] = "Sharpened",
+    [ITEM_TRAIT_TYPE_WEAPON_TRAINING] = "Training",
+    [ITEM_TRAIT_TYPE_WEAPON_WEIGHTED] = "Weighted",
+}
+
+function Scripter.GetItemTraitLabel(traitType)
+    local traitLabel = craftTraitType[traitType]
+    if traitLabel == nil then traitLabel = "unknown" end
+    return traitLabel
 end
 
 local charStatType = {
@@ -418,9 +407,7 @@ function Scripter.HighlightText(text)
 end
 
 function Scripter.PrintDebug(text)
-    if Scripter.savedVariables.debugmode == false then
-        return
-    end
+    if Settings:GetValue(OPT_DEBUG) == false then return end
     print("[debug] " .. text)
 end
 
@@ -602,10 +589,6 @@ function Scripter.RestoreBindingsFromTable()
             skippedBindCount = skippedBindCount + 1
         end
     end
-    Scripter.debug.bindCount = bindCount
-    Scripter.debug.attemptedBindCount = attemptedBindCount
-    Scripter.debug.skippedBindCount = skippedBindCount
-    Scripter.debug.maxBindingsPerAction = maxBindings
 end
 
 function Scripter.SaveBindings(bindSetName, isSilent)
@@ -613,7 +596,6 @@ function Scripter.SaveBindings(bindSetName, isSilent)
         print("Usage: /keybind /set <name>")
         return
     end
-    Scripter.debug.savingSet = bindSetName
     Scripter.BuildBindingsTable()
     
     -- Update any existing bind set as a set union, or create new
@@ -628,7 +610,6 @@ function Scripter.SaveBindings(bindSetName, isSilent)
     end
     local character = GetUnitName("player")
     Scripter.savedVariables.autoSets[character] = bindSetName
-    Scripter.debug.savedSet = bindSetName
 end
 
 function Scripter.LoadBindings(bindSetName, isSilent)
@@ -644,7 +625,6 @@ function Scripter.LoadBindings(bindSetName, isSilent)
         print("Cannot load bind set - in combat. Please try again out of combat.")
         return
     end
-    Scripter.debug.loadingSet = bindSetName
     Scripter.bindings = Scripter.savedVariables.bindings[bindSetName]
     Scripter.RestoreBindingsFromTable()
     if not isSilent then
@@ -652,7 +632,6 @@ function Scripter.LoadBindings(bindSetName, isSilent)
     end
     local character = GetUnitName("player")
     Scripter.savedVariables.autoSets[character] = bindSetName
-    Scripter.debug.loadedSet = bindSetName
 end
 
 function Scripter.ListBindings()
@@ -680,20 +659,9 @@ function Scripter.DeleteBindings(bindSetName)
     print("Scripter: Deleted bind set '" .. Scripter.HighlightText(bindSetName) .. "'.")
 end
 
-function Scripter.SetKeybindAuto(newValue)
-    if Scripter.savedVariables.userconf_autobind == false then
-        Scripter.savedVariables.userconf_autobind = true
-        print("Scripter: Enabled automatic bind set updates.")
-        Scripter.LoadAutomaticBindings()
-    else
-        Scripter.savedVariables.userconf_autobind = false
-        print("Scripter: Disabled automatic bind set updates.")
-    end
-end
-
 function Scripter.SaveAutomaticBindings(isSilent)
     -- No-op if automatic mode is disabled.
-    if not Scripter.savedVariables.userconf_autobind then return end
+    if Settings:GetValue(OPT_AUTOBIND) == false then return end
     
     local character = GetUnitName("player")
     local setName = Scripter.savedVariables.autoSets[character]
@@ -703,22 +671,17 @@ function Scripter.SaveAutomaticBindings(isSilent)
         Scripter.savedVariables.autoSets[character] = setName
     end
     
-    Scripter.debug.autoSavingSet = setName
     Scripter.SaveBindings(setName, isSilent)
-    Scripter.debug.autoSavedSet = setName
 end
 
 function Scripter.LoadAutomaticBindings(isSilent)
-    -- No-op if automatic mode is disabled.
-    if not Scripter.savedVariables.userconf_autobind then return end
+    if Settings:GetValue(OPT_AUTOBIND) == false then return end
     
     local character = GetUnitName("player")
     local setName = Scripter.savedVariables.autoSets[character]
     
     if setName ~= nil then
-        Scripter.debug.autoLoadingSet = setName
         Scripter.LoadBindings(setName, isSilent)
-        Scripter.debug.autoLoadedSet = setName
     else
         -- If there isn't a set to load, but automatic mode is on,
         -- create a new set.
@@ -754,27 +717,26 @@ end
 
 -- reset afk mode
 function Scripter.ResetAfkMode()
-    Scripter.savedVariables.userconf_afk = false
+    Settings:SetValue(OPT_AFK, false)
     Scripter.savedVariables.usertime_afk = 0
 end
 
 function Scripter.AFKWake()
-    if Scripter.savedVariables.userconf_afk == false then
-        return
-    end
+    if Settings:GetValue(OPT_AFK) == false then return end
+
     Scripter.ResetAfkMode()
     print ("Scripter: Character AFK mode disabled.")
 end
 
 function Scripter.AFKSleep()
-    if Scripter.savedVariables.userconf_afk == false then return end
+    if Settings:GetValue(OPT_AFK) == false then return end
 
     afk_index = afk_index + 1
     if afk_index > 6 then afk_index = 2 end
-    local cmd_name = "/" .. Scripter.savedVariables.userconf_afk_action .. afk_index
+    local cmd_name = "/" .. Settings:GetValue(OPT_AFK_ACTION) .. afk_index
     mcommand = SLASH_COMMANDS[cmd_name]
     if mcommand == nil then
-        cmd_name = "/" .. Scripter.savedVariables.userconf_afk_action
+        cmd_name = "/" .. Settings:GetValue(OPT_AFK_ACTION)
         mcommand = SLASH_COMMANDS[cmd_name]
     end
     if mcommand ~= nil then
@@ -827,12 +789,8 @@ end
 
 
 function Scripter.notifyAction(ntext)
-    if Scripter.savedVariables == nil then
-	    return
-    end
     ntext = "|cFFFFFF" .. ntext
-    if Scripter.savedVariables.userconf_quiet == false then
---        print("|cFFFFFF" .. ntext)
+    if Settings:GetValue(OPT_NOTIFY) == true then
         ScripterLibGui.addMessage(ntext)
     end
     Scripter.AppendLog(ntext)
@@ -937,6 +895,18 @@ function Scripter.GetPlayerQuestData(name)
     return nil
 end
 
+function Scripter.GetPlayerCraftData(name)
+    if (name == nil or name == "") then return nil end
+
+    for k,v in pairs(Scripter.savedVariables.chardata_trait) do
+        if string.match(k, name) ~= nil then
+            return v
+        end
+    end
+
+    return nil
+end
+
 function Scripter.GetPlayerAttributeData(name)
     if (name == nil or name == "") then return nil end
 
@@ -1025,21 +995,21 @@ function Scripter.addAbilityRate(abilityName, hitValue)
     if hitValue == 0 then return end
     if abilityName == "" then return end
 
-    if Scripter.savedVariables.userdata_score[abilityName] == nil then
+    if Scripter.savedVariables.userdata_stat[abilityName] == nil then
         -- initial addon load
-        Scripter.savedVariables.userdata_score[abilityName] = 0
+        Scripter.savedVariables.userdata_stat[abilityName] = 0
     end
 
-    if score_stamp[abilityName] == nil then
+    if stat_stamp[abilityName] == nil then
         -- initial action per login session
-        score_stamp[abilityName] = GetTimeStamp() - 60
-        score_span[abilityName] = hitValue
+        stat_stamp[abilityName] = GetTimeStamp() - 60
+        stat_span[abilityName] = hitValue
     else
         -- incrimental action per login session
-        local tspan = (GetTimeStamp() - score_stamp[abilityName])
-        score_span[abilityName] = score_span[abilityName] + hitValue
-        local avg = score_span[abilityName] / (tspan / 60);
-        Scripter.savedVariables.userdata_score[abilityName] = (avg + Scripter.savedVariables.userdata_score[abilityName]) / 2
+        local tspan = (GetTimeStamp() - stat_stamp[abilityName])
+        stat_span[abilityName] = stat_span[abilityName] + hitValue
+        local avg = stat_span[abilityName] / (tspan / 60);
+        Scripter.savedVariables.userdata_stat[abilityName] = (avg + Scripter.savedVariables.userdata_stat[abilityName]) / 2
     end
 end
 
@@ -1053,21 +1023,16 @@ function Scripter.NewMoneyEvent(eventId, newMoney, oldMoney, updateReason)
 end
 
 function Scripter.AddItemEvent(eventId, bagId, slotId, itemSoundCategory, updateReason)
+    Scripter.addAbilityRate("Loot", 1)
+    if Settings:GetValue(OPT_NOTIFY_INVENTORY) == false then return end
+
     local link = GetItemLink(bagId, slotId,LINK_STYLE_BRACKETS)
     local name,col,typID,id,qual,levelreq,enchant,ench1,ench2,un1,un2,un3,un4,un5,un6,un7,un8,un9,style,un10,bound,charge,un11=ZO_LinkHandler_ParseLink(link)
 
---    Scripter.savedVariables.userdata_eq[name] = link
-
-    if Scripter.savedVariables.userconf_quiet_inventory == false then
-        name = Scripter.FormatItemName(name)
-        if levelreq ~= nil then
-	    Scripter.notifyAction("Obtained item " .. name .. " Lv " .. levelreq .. ".")
-        else
---	    Scripter.notifyAction("Obtained item " .. name .. ".")
-        end
+    name = Scripter.FormatItemName(name)
+    if levelreq ~= nil then
+        Scripter.notifyAction("Obtained item " .. name .. " Lv " .. levelreq .. ".")
     end
-
-    Scripter.addAbilityRate("Loot", 1)
 end
 
 function Scripter.GetItemCondition(bagId, slotId)
@@ -1142,9 +1107,8 @@ function Scripter.SetJunkItem(bagId, slotId)
 end
 
 function Scripter.PerformJunkItem(bagId, slotId)
-    if (Scripter.savedVariables.userconf_junkmode == false or bagId ~= BAG_BACKPACK) then
-        return
-    end
+    if Settings:GetValue(OPT_JUNKMODE) == false then return end
+    if bagId ~= BAG_BACKPACK then return end
 
     local icon, stackCount, sellPrice, meetsUsageRequirement, locked, equipType, itemStyle, quality = GetItemInfo(bagId, slotId)
     -- @see /sconfig junk
@@ -1176,7 +1140,7 @@ function Scripter.GetPlayerItemInfo(bagId, slotId)
         item['type'] = type_str
     end
     local qual_str = Scripter.GetItemQualityLabel(i_qual)
-    if qual_str ~= "Normal" then
+    if (qual_str ~= "Normal" and qual_str ~= "unknown") then
         item['quality'] = qual_str
     end
     if i_price > 0 then
@@ -1189,14 +1153,16 @@ function Scripter.GetPlayerItemInfo(bagId, slotId)
         item['level'] = i_level
     end
     if i_type == ITEMTYPE_ARMOR then
-        --local i_armor = GetItemArmorType(GetItemLink(bagId, slotId))
         local i_armor = GetItemArmorType(bagId, slotId)
-        local i_trait = GetItemTrait(bagId, slotId)
-        item['armor'] = Scripter.GetItemArmorLabel(i_armor)
-        local trait_str = Scripter.GetItemTraitLabel(i_trait, i_armor)
-        if trait_str ~= "unknown" then
-            item['trait'] = trait_str
-        end	
+        local armor_str = Scripter.GetItemArmorLabel(i_armor)
+	if armor_str ~= "unknown" then
+            item['armor'] = armor_str
+        end
+--         local i_trait = GetItemTrait(bagId, slotId)
+--         local trait_str = Scripter.GetItemTraitLabel(i_trait, i_armor)
+--         if trait_str ~= "unknown" then
+--             item['trait'] = trait_str
+--         end	
     elseif i_type == ITEMTYPE_WEAPON then
         --local i_wep = GetItemWeaponType(GetItemLink(bagId, slotId))
         local i_wep = GetItemWeaponType(bagId, slotId)
@@ -1293,8 +1259,9 @@ end
 
 function Scripter.NewDeathEvent(event)
     Scripter.PreEventCheck()
+
     if (event == EVENT_PLAYER_DEAD) then -- player died
-        if Scripter.savedVariables.userconf_quiet_combat == false then
+        if Settings:GetValue(OPT_NOTIFY_COMBAT) == true then
             Scripter.notifyAction("You have died!")
         end
         Scripter.addAbilityRate("Death", 1)
@@ -1310,7 +1277,7 @@ function Scripter.AddEffectEvent(effectName, buffType, stackCount, abilityType)
     if effectName == "" then
         return
     end
-    if Scripter.savedVariables.userconf_quiet_effect == false then
+    if Settings:GetValue(OPT_NOTIFY_EFFECT) == true then
         local btype = nil
         if buffType == ABILITY_TYPE_STUN then
             btype = "stun"
@@ -1343,7 +1310,7 @@ function Scripter.AddEffectEvent(effectName, buffType, stackCount, abilityType)
 end
 
 function Scripter.RemoveEffectEvent(effectName, buffType, abilityType)
-    if Scripter.savedVariables.userconf_quiet_effect == false then
+    if Settings:GetValue(OPT_NOTIFY_EFFECT) == true then
         local kind = "negative"
         if (abilityType == 0 or abilityType == 1 or abilityType == 10) then
             kind = "positive";
@@ -1382,9 +1349,7 @@ function Scripter.NewEffectEvent(eventCode, changeType, effectSlot, effectName, 
 end
 
 function Scripter.NewGroupInviteEvent()
-    if Scripter.savedVariables.userconf_autoaccept == false then
-        return
-    end
+    if Settings:GetValue(OPT_AUTOACCEPT) == false then return end
     local inviterDisplayName, secsSinceRequest = GetGroupInviteInfo()
     
     for i = 1, GetNumFriends(), 1 do
@@ -1466,6 +1431,12 @@ function Scripter.RefreshGuildPlayerStatInfo()
     end
 end
 
+function Scripter.RefreshCharacterTraitInfo()
+    for k,v in pairs(itemCraftType) do
+        Scripter.GetCharacterCraftInfo(v)
+    end
+end
+
 function Scripter.NewStatEvent(eventId, unitTag)
     if unitTag ~= "player" then return end
     Scripter.PrintDebug("NewStatEvent eventId:" .. eventId .. " unitTag:" .. unitTag)
@@ -1512,7 +1483,10 @@ function Scripter.MSync_ParseMailEvent(name, text)
         end
        if string.match(data, "QUE:") ~= nil then
             Scripter.savedVariables.chardata_quest[name] = Scripter.MSync_ParseMailData(data)
-        end
+       end
+       if string.match(data, "CRA:") ~= nil then
+            Scripter.savedVariables.chardata_trait[name] = Scripter.MSync_ParseMailData(data)
+       end
        if string.match(data, "SKI:") ~= nil then
             Scripter.savedVariables.chardata_skill[name] = Scripter.MSync_ParseMailData(data)
         end
@@ -1525,7 +1499,7 @@ function Scripter.MSync_ParseMailEvent(name, text)
 end
 
 function Scripter.NewMailEvent(eventCode, mailId)
-    local senderAccount, senderName, Subject, Icon, unread, fromSystem, fromCustomerService, isReturned, numAttachments, num2, num3, daysLeft, someNumber = GetMailItemInfo( mailId )
+    local senderAccount, senderName, Subject, Icon, unread, fromSystem, fromCustomerService, isReturned, numAttachments, num2, num3, daysLeft, secs = GetMailItemInfo( mailId )
     if fromSystem == true then return end
     if fromCustomerService == true then return end
     if isReturned == true then return end
@@ -1534,19 +1508,21 @@ function Scripter.NewMailEvent(eventCode, mailId)
     senderName = Scripter.ResolveCharacterName(senderName)
     Scripter.PrintDebug("NewMailEvent senderAccount:" .. senderAccount .. " senderName:" .. senderName .. " nextTime:" .. Scripter.FormatTime(GetTimeStamp() + 60))
 
+    local stamp = GetTimeStamp() - secs;
+    local last_stamp = Scripter.savedVariables.chardata_sync[senderName]
+    if last_stamp == nil then last_stamp = 0 end
+
     if Subject == "Scripter Automatic Synchronization" then
-        --if (unread == true and Scripter.savedVariables.userdata_sync[senderAccount] ~= nil) then
-        if (unread == false and Scripter.savedVariables.userdata_sync[senderAccount] ~= nil) then
+        if (stamp > last_stamp and Scripter.savedVariables.userdata_sync[senderAccount] ~= nil) then
             local body = ReadMail(mailId)
 	    if (body == nil or body == "") then return end 
 
             Scripter.MSync_ParseMailEvent(senderName, body)
--- 	    if Scripter.savedVariables.userconf_sync_mail == false then
---                 Scripter.notifyAction("Synchronization received from '" .. Scripter.HighlightText(senderName) .. " (" .. senderAccount .. ")'.")
---             end
+
+	    Scripter.notifyAction("Received synchronization from '" .. Scripter.HighlightText(senderName) .. " (" .. senderAccount .. "'.")
         end
 
-	if Scripter.savedVariables.userconf_sync_mail == false then
+        if Settings:GetValue(OPT_SYNC_DELETE) == true then
             -- do not retain sync mails
             RequestOpenMailbox()
             ReadMail(mailId) -- mark as read
@@ -1570,30 +1546,95 @@ function Scripter.RefreshMailEvent()
     Scripter.savedVariables.usertime_mail = Scripter.GetTimerOffset() + 60000
 end
 
+function Scripter.NewQuestAddEvent(eventCode, questIndex, questName, objectiveName)
+    if questName == nil then return end
+    Scripter.PrintDebug("NewQuestAddEvent questIndex:" .. questIndex .. " questName:" .. questName)
+    Scripter.PreEventCheck()
+
+    local zoneName = GetJournalQuestLocationInfo(questIndex)
+    if zoneName ~= "" then zoneName = "Global" end
+    Scripter.savedVariables.userdata_quest[questName] = qi.zoneName
+end
+
+function Scripter.NewQuestCompleteEvent(eventCode, questName, level, prevXp, curXp, rank, prevPoints, curPoints)
+    if questName == nil then return end
+    Scripter.PrintDebug("NewQuestCompleteEvent questName:" .. questName .. " level:" .. level)
+    Scripter.PreEventCheck()
+
+    Scripter.addAbilityRate("Quest", 1)
+    Scripter.notifyAction("You completed quest '" .. Scripter.HighlightText(questName) .. " [Lv " .. level .. "]'.")
+
+    Scripter.savedVariables.userdata_quest[questName] = nil
+end
+
+function Scripter.NewMovementEvent(eventCode)
+    Scripter.PrintDebug("NewMovementEvent eventCode:" .. eventCode)
+    Scripter.PreEventCheck()
+end
+
+function Scripter.NewTraitEvent(eventCode, itemName, itemTrait)
+    if (itemName == nil or itemTrait == nil) then return end
+    Scripter.PrintDebug("NewTraitEvent eventCode:" .. eventCode .. " itemName:" .. itemName .. " itemTrait:" .. itemTrait)
+    Scripter.PreEventCheck()
+
+    Scripter.notifyAction("You learned the '" .. Scripter.HighlightText(itemTrait .. " " .. itemName) .. "' crafting trait.")
+    Scripter.RefreshCharacterTraitInfo()
+end
+
 function Scripter.RegisterEvents()
+    -- Book Events
+    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_LORE_BOOK_LEARNED, Scripter.NewLoreBookEvent)
+
+    -- Chat Events
+--    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_CHAT_MESSAGE_CHANNEL, Scripter.NewChannelEvent)
+
+    -- Keybind Events
     EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_KEYBINDINGS_LOADED, Scripter.OnKeybindingsLoaded)
     EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_KEYBINDING_SET, Scripter.OnKeybindingSetOrCleared)
     EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_KEYBINDING_CLEARED, Scripter.OnKeybindingSetOrCleared)
 
+    -- Location Events
+    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_LINKED_WORLD_POSITION_CHANGED, Scripter.NewZoneEvent)
+    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_ZONE_CHANGED, Scripter.NewZoneEvent)
+
+    -- Money Events
+    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_MONEY_UPDATE, Scripter.NewMoneyEvent)
+
+    -- Group Events
+    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_GROUP_INVITE_RECEIVED, Scripter.NewGroupInviteEvent)
+
+    -- Item Events
+    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_INVENTORY_SINGLE_SLOT_UPDATE, Scripter.NewItemEvent)
+
+    -- Craft Events
+    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_CRAFT_STARTED, function () scripterCraftEvent = true end);
+    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_CRAFT_COMPLETED, function () scripterCraftEvent = false end);
+
+    -- Character Events
+    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_STATS_UPDATED, Scripter.NewStatEvent)
+    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_PLAYER_COMBAT_STATE, Scripter.NewCombatStateEvent)
+    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_EFFECT_CHANGED , Scripter.NewEffectEvent)
+    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_SKILL_XP_UPDATE , Scripter.NewSkillEvent)
+    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_PLAYER_DEAD , Scripter.NewDeathEvent)
     EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_COMBAT_EVENT , Scripter.NewCombatEvent)
     EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_EXPERIENCE_UPDATE , Scripter.NewExpEvent)
     EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_VETERAN_POINTS_UPDATE , Scripter.NewExpEvent)
-    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_PLAYER_DEAD , Scripter.NewDeathEvent)
-    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_SKILL_XP_UPDATE , Scripter.NewSkillEvent)
-    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_LORE_BOOK_LEARNED, Scripter.NewLoreBookEvent)
---    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_CHAT_MESSAGE_CHANNEL, Scripter.NewChannelEvent)
+
+    -- Trait Events
+    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_TRAIT_LEARNED, Scripter.NewTraitEvent)
+
+    -- UI Events
+    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_NEW_MOVEMENT_IN_UI_MODE, Scripter.NewMovementEvent)
+
+    -- Vendor Events
     EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_OPEN_STORE, Scripter.NewVendorEvent)
-    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_LINKED_WORLD_POSITION_CHANGED, Scripter.NewZoneEvent)
-    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_ZONE_CHANGED, Scripter.NewZoneEvent)
-    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_MONEY_UPDATE, Scripter.NewMoneyEvent)
-    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_INVENTORY_SINGLE_SLOT_UPDATE, Scripter.NewItemEvent)
-    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_EFFECT_CHANGED , Scripter.NewEffectEvent)
-    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_GROUP_INVITE_RECEIVED, Scripter.NewGroupInviteEvent)
-    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_CRAFT_STARTED, function () scripterCraftEvent = true end);
-    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_CRAFT_COMPLETED, function () scripterCraftEvent = false end);
-    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_STATS_UPDATED, Scripter.NewStatEvent)
-    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_PLAYER_COMBAT_STATE, Scripter.NewCombatStateEvent)
---    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_MAIL_READABLE, Scripter.NewMailEvent)
+
+    -- Quest Events
+    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_QUEST_COMPLETE, Scripter.NewQuestCompleteEvent)
+    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_QUEST_ADDED, Scripter.NewQuestAddEvent)
+
+    -- Mail Events
+    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_MAIL_READABLE, Scripter.NewMailEvent)
 end
 
 function Scripter.KeybindSlashCommandHelp()
@@ -1611,6 +1652,14 @@ end
 function Scripter.GuildSlashCommandHelp()
     print("- /sguild  |cff8f41  List all of character's active guilds.")
     print("- /sguild <guild>  |cff8f41  List all characters in guild.")
+end
+function Scripter.ResearchSlashCommandHelp()
+    print("- /research  |cff8f41  List all researchable items in the backpack.")
+--    print("- /research <item>  |cff8f41  Research a item in the backpack.")
+end
+function Scripter.AFKSlashCommandHelp()
+    print("- /afk  |cff8f41  Toggle character's AFK mode.")
+    print("- /afk /action <cmd>  |cff8f41  Set the action to perform while in AFK mode.")
 end
 
 function Scripter.FormatDate(time)
@@ -1662,18 +1711,19 @@ function Scripter.FormatSecondsToDDHHMMSS(secsSinceLogoff)
     return string.format("%4d Days: %2d Hours: %2d Minutes: %2d Seconds", days, hours, minutes, seconds)
 end
 
-function Scripter.AFKConfigCommand(argtext)
-    if Scripter.savedVariables.userconf_afk == false then
-        Scripter.savedVariables.userconf_afk = true
+function Scripter.AFKToggleCommand(argtext)
+    if Settings:GetValue(OPT_AFK) == false then
+        Settings:SetValue(OPT_AFK, true)
 	print("Scripter: Character AFK mode enabled.")
 	Scripter.AFKSleep()
     else
-        Scripter.savedVariables.userconf_afk = false
+        Settings:SetValue(OPT_AFK, false)
 	print("Scripter: Character AFK mode disabled.")
 	Scripter.AFKWake()
     end
 end
-function Scripter.AFKActionConfigCommand(argtext)
+
+function Scripter.AFKActionCommand(argtext)
     if (argtext == nil or argtext == "") then
         print("Scripter: You must specify a command.")
         return
@@ -1685,7 +1735,7 @@ function Scripter.AFKActionConfigCommand(argtext)
         return
     end
 
-    Scripter.savedVariables.userconf_afk_action = argtext
+    Settings:SetValue(OPT_AFK_ACTION, argtext)
     print("Scripter: Set character AFK action to '/" .. Scripter.HighlightText(argtext) .. "'.")
 end
 
@@ -1714,10 +1764,9 @@ function Scripter.AliasSlashCommandHelp()
     print("Example aliases:")
     print("- /alias lo logout  |cff8f41  Convience command for character logout.")
     print("- /alias help scripter  |cff8f41  Use scripter help via /help command.")
-    print("- /alias quiet sconfig quiet  |cff8f41  Toggle automatic notification window with /quiet.")
     print("- /alias note log note:  |cff8f41  Add a note to character log with /note <text>.")
-    print("- /alias skill score /skill  |cff8f41  List skill attribute with /skill.") 
-    print("- /alias abil score /action  |cff8f41  Show character's action rates with /abil.")
+    print("- /alias skill stat /skill  |cff8f41  List skill attribute with /skill.") 
+    print("- /alias abil stat /action  |cff8f41  Show character's action rates with /abil.")
 end
 
 Scripter.keybindCommands = {
@@ -1740,32 +1789,35 @@ function Scripter.LogSlashCommandHelp()
 end
 
 function Scripter.ScoreSlashCommandHelp()
-    print("- /score [<user>]  |cff8f41  Show summary of player's attributes.")
-    print("- /score /action  |cff8f41  Show recent character actions.")
-    print("- /score /all  |cff8f41  Show all character information.")
-    print("- /score /buff  |cff8f41  Show current character effects.")
-    print("- /score /clear  |cff8f41  Reset action statistics.")
-    print("- /score /skill  |cff8f41  Display character skill attributes.")
-    print("- /score /userlist  |cff8f41  List all users with stored info.")
+    print("- /stat [<user>]  |cff8f41  Show summary of player's attributes.")
+    print("- /stat /action  |cff8f41  Show recent character actions.")
+    print("- /stat /all  |cff8f41  Show all character information.")
+    print("- /stat /buff  |cff8f41  Show current character effects.")
+    print("- /stat /clear  |cff8f41  Reset action statistics.")
+    print("- /stat /craft [<user>]  |cff8f41  Display character crafting traits.")
+    print("- /stat /skill [<user>]  |cff8f41  Display character skill attributes.")
+    print("- /stat /userlist  |cff8f41  List all users with stored info.")
 end
 
 function Scripter.ConfigSlashCommandHelp()
-    print("- /sconfig  |cff8f41  List all configuration values.")
-    print("- /sconfig afk  |cff8f41  Enable \"away from keyboard\" mode.")
-    print("- /sconfig afk_action  |cff8f41  Set \"away from keyboard\" action.")
-    print("- /sconfig autoaccept  |cff8f41  Automatic invitation accept from friends.")
-    print("- /sconfig book  |cff8f41  Automatic book notifications.")
-    print("- /sconfig combat  |cff8f41  Automatic combat notifications.")
-    print("- /sconfig debug  |cff8f41  Verbose event information.")
-    print("- /sconfig effect  |cff8f41  Automatic effect notifications.")
-    print("- /sconfig inventory  |cff8f41  Automatic inventory notifications.")
-    print("- /sconfig junk  |cff8f41  Persistent junk item management.")
-    print("- /sconfig keybind  |cff8f41  Automatic character keybinding.")
-    print("- /sconfig log <lines>  |cff8f41  Number of log lines to list.")
-    print("- /sconfig money  |cff8f41  Automatic money notifications.")
-    print("- /sconfig quiet  |cff8f41  Manage automatic notification window.")
-    print("- /sconfig sync  |cff8f41  Enable or diable automatic synchronization.")
-    print("- /sconfig sync_mail  |cff8f41  Set whether to retain sync mails.")
+     print("- /sconfig  |cff8f41  Open Scripter configuration dialog.")
+
+--     print("- /sconfig  |cff8f41  List all configuration values.")
+--     print("- /sconfig afk  |cff8f41  Enable \"away from keyboard\" mode.")
+--     print("- /sconfig afk_action  |cff8f41  Set \"away from keyboard\" action.")
+--     print("- /sconfig autoaccept  |cff8f41  Automatic invitation accept from friends.")
+--     print("- /sconfig book  |cff8f41  Automatic book notifications.")
+--     print("- /sconfig combat  |cff8f41  Automatic combat notifications.")
+--     print("- /sconfig debug  |cff8f41  Verbose event information.")
+--     print("- /sconfig effect  |cff8f41  Automatic effect notifications.")
+--     print("- /sconfig inventory  |cff8f41  Automatic inventory notifications.")
+--     print("- /sconfig junk  |cff8f41  Persistent junk item management.")
+--     print("- /sconfig keybind  |cff8f41  Automatic character keybinding.")
+--     print("- /sconfig log <lines>  |cff8f41  Number of log lines to list.")
+--     print("- /sconfig money  |cff8f41  Automatic money notifications.")
+--     print("- /sconfig quiet  |cff8f41  Manage automatic notification window.")
+--     print("- /sconfig sync  |cff8f41  Enable or diable automatic synchronization.")
+--     print("- /sconfig sync_mail  |cff8f41  Set whether to retain sync mails.")
 end
 
 function Scripter.TimeSlashCommandHelp()
@@ -1856,7 +1908,12 @@ function Scripter.FilterSlashCommandHelp()
     print("- /filter <text>  |cff8f41  Add a new chat text filter.");
 end
 
+function Scripter.ScreenshotSlashCommandHelp()
+    print("- /snap  |cff8f41  " .. Scripter.savedVariables.userhelp_desc["/snap"])
+end
+
 Scripter.helpCommands = {
+    ["afk"] = Scripter.AFKSlashCommandHelp,
     ["alias"] = Scripter.AliasSlashCommandHelp,
     ["cmd"] = Scripter.CommandSlashCommandHelp,
     ["eq"] = Scripter.InventorySlashCommandHelp,
@@ -1867,12 +1924,14 @@ Scripter.helpCommands = {
     ["loc"] = Scripter.ZoneSlashCommandHelp,
     ["log"] = Scripter.LogSlashCommandHelp,
     ["mail"] = Scripter.MailSlashCommandHelp,
+    ["research"] = Scripter.ResearchSlashCommandHelp,
     ["sguild"] = Scripter.GuildSlashCommandHelp,
     ["sgroup"] = Scripter.PartySlashCommandHelp,
     ["quest"] = Scripter.QuestSlashCommandHelp,
-    ["score"] = Scripter.ScoreSlashCommandHelp,
+    ["stat"] = Scripter.ScoreSlashCommandHelp,
     ["sconfig"] = Scripter.ConfigSlashCommandHelp,
     ["feedback"] = Scripter.SubmitSlashCommandHelp,
+    ["snap"] = Scripter.ScreenshotSlashCommandHelp,
     ["sync"] = Scripter.SyncSlashCommandHelp,
     ["time"] = Scripter.TimeSlashCommandHelp,
     ["timer"] = Scripter.TimerSlashCommandHelp,
@@ -2190,24 +2249,28 @@ Scripter.logCommands = {
 }
 
 function Scripter.LogListCommand(argtext)
-	print("History:")
-	local cnt = 0
+    print("History:")
+
+    local max = Settings:GetValue(OPT_LOG_MAX)
+
+    local cnt = 0
     for i = Scripter.savedVariables.log_idx + 1, 1000, 1 do
-	    if Scripter.savedVariables.log[i] ~= nil then
-		    if cnt > (1000 - Scripter.savedVariables.userconf_log_max) then
-		        print(Scripter.savedVariables.log[i])
+        if Scripter.savedVariables.log[i] ~= nil then
+            if cnt > (1000 - max) then
+                print(Scripter.savedVariables.log[i])
             end
-		end
-		cnt = cnt + 1
-	end
+        end
+        cnt = cnt + 1
+    end
+
     for i = 1, Scripter.savedVariables.log_idx, 1 do
-	    if Scripter.savedVariables.log[i] ~= nil then
-		    if cnt > (1000 - Scripter.savedVariables.userconf_log_max) then
-		        print(Scripter.savedVariables.log[i])
-		    end
-		end
-		cnt = cnt + 1
-	end
+        if Scripter.savedVariables.log[i] ~= nil then
+            if cnt > (1000 - max) then
+                print(Scripter.savedVariables.log[i])
+            end
+        end
+        cnt = cnt + 1
+    end
 end
 
 function Scripter.LogAddCommand(argtext)
@@ -2288,13 +2351,13 @@ end
 
 function Scripter.ScoreListActionCommand(argtext)
     print("Actions:")
-    for k,v in pairs(Scripter.savedVariables.userdata_score) do
+    for k,v in pairs(Scripter.savedVariables.userdata_stat) do
 	    if v ~= nil then
 			    if v ~= 0 then
-      			if score_span[k] == nil then
+      			if stat_span[k] == nil then
                           print(k .. " - " .. string.format("%7.2f", v) .. "/min")
       				else
-                          print(k .. " - " .. string.format("%7.2f", v) .. "/min (" .. score_span[k] ..  " since " .. Scripter.FormatTime(score_stamp[k]) .. ")")
+                          print(k .. " - " .. string.format("%7.2f", v) .. "/min (" .. stat_span[k] ..  " since " .. Scripter.FormatTime(stat_stamp[k]) .. ")")
       				end
             end
         end
@@ -2303,7 +2366,7 @@ end
 
 function Scripter.ScoreListActionSummary()
 	local text = "Actions: "
-	for k,v in pairs(Scripter.savedVariables.userdata_score) do
+	for k,v in pairs(Scripter.savedVariables.userdata_stat) do
 	    if (v ~= nil and v ~= 0) then
 	        text = text .. k .. " (" .. string.format("%7.2f", v) .. "/min)  "
 	    end
@@ -2358,11 +2421,11 @@ function Scripter.ScoreSummaryCommand(argtext)
 end
 
 function Scripter.ScoreResetCommand(argtext)
-    Scripter.savedVariables.userdata_score = {}
+    Scripter.savedVariables.userdata_stat = {}
     Scripter.savedVariables.chardata_attr = {}
     Scripter.savedVariables.chardata_skill = {}
-    score_span = {}
-    score_stamp = {}
+    stat_span = {}
+    stat_stamp = {}
     print("Scripter: Score statistics have been cleared.")
 end
 
@@ -2440,7 +2503,6 @@ function Scripter.GetPlayerSkills()
     return skills
 end
 
--- todo: store in Scripter.savedVariables.userdata_skill
 function Scripter.SkillCommand(argtext)
     if (argtext == nil or argtext == "") then 
         local skills = Scripter.GetPlayerSkills()
@@ -2450,7 +2512,7 @@ function Scripter.SkillCommand(argtext)
                 if v > 0 then
                     local text = k .. ": " .. v .. " Points"
                     local per = Scripter.savedVariables.userdata_skill_rate[k]
-                    local rate = Scripter.savedVariables.userdata_score[k]
+                    local rate = Scripter.savedVariables.userdata_stat[k]
                     if per ~= nil then
                         text = text .. " " .. string.format("%7.2f", per) .. "%"
                     end
@@ -2464,7 +2526,7 @@ function Scripter.SkillCommand(argtext)
     else
         local data = Scripter.GetPlayerSkillData(argtext)
         if data == nil then
-            print("Scripter: No skill info available for user '" .. argtext .. "'.")
+            print("Scripter: No skill info available for user '" .. Scripter.HighlightText(argtext) .. "'.")
             return
         end
 
@@ -2486,9 +2548,68 @@ function Scripter.ScoreUserListCommand(argtext)
     end
 end
 
-Scripter.scoreCommands = {
+function Scripter.GetCharacterCraftInfo(craftType)
+    local i,maxLines
+    local data = {}
+    local text = ""
+
+    maxLines = GetNumSmithingResearchLines(craftType)
+    for i = 1, maxLines do
+        local unkCount = 0
+        local name, icon, numTraits, timeRequiredForNextResearchSecs = GetSmithingResearchLineInfo(craftType, i)
+	for traitId = 1, numTraits do
+            local traitType, traitDescription, known = GetSmithingResearchLineTraitInfo(craftType, traitId, i)
+	    local traitLabel = Scripter.GetItemTraitLabel(traitType)
+	    if known == true then
+                local craftLabel = Scripter.GetItemCraftTypeLabel(craftType)
+
+                if text ~= "" then text = text .. "\n|cFFFFFF" end
+                text = text .. "(" .. craftLabel .. ") " .. Scripter.HighlightText(traitLabel) .. " " .. name .. "\n|cFFFFFF" .. "- " .. traitDescription
+
+		local dname = traitLabel .. " " .. name
+		data[dname] = craftLabel 
+             elseif (traitDescription ~= "" and unkCount == 0) then
+                if text ~= "" then text = text .. "\n|cFFFFFF" end
+                text = text .. "(" .. Scripter.GetItemCraftTypeLabel(craftType) .. ") " .. Scripter.HighlightText(traitLabel) .. " " .. name .. " [" .. Scripter.HighlightText("unlearned") .. "]" .. "\n|cFFFFFF" .. "- " .. traitDescription
+
+		unkCount = unkCount + 1
+            end
+        end
+    end
+
+    Scripter.savedVariables.userdata_trait = data
+    return text
+end
+
+function Scripter.PrintCharacterCraftInfo(craftType)
+    local text = Scripter.GetCharacterCraftInfo(craftType)
+    if text ~= "" then print(text) end
+end
+
+function Scripter.ScoreListCraftCommand(argtext)
+    if (argtext == nil or argtext == "") then
+        print("Crafting traits:")
+        for k,v in pairs(itemCraftType) do
+            Scripter.PrintCharacterCraftInfo(v)
+        end
+    else
+        local data = Scripter.GetPlayerCraftData(argtext)
+        if data == nil then
+            print("Scripter: No craft info available for user '" .. Scripter.HighlightText(argtext) .. "'.")
+            return
+        end
+
+        print("Craft traits (" .. argtext .. "):")
+        for k,v in pairs(data) do
+	    print("(" .. k .. ") " .. v)
+        end
+    end
+end
+
+Scripter.statCommands = {
     ["/action"] = Scripter.ScoreListActionCommand,
     ["/all"] = Scripter.ScoreListFullCommand,
+    ["/craft"] = Scripter.ScoreListCraftCommand,
     ["/buff"] = Scripter.ScoreListBuffCommand,
     ["/clear"] = Scripter.ScoreResetCommand,
     ["/skill"] = Scripter.SkillCommand,
@@ -2503,7 +2624,7 @@ function Scripter.ScoreCommand(argtext)
         return
     end
 
-    local scommand = Scripter.scoreCommands[args[1]]
+    local scommand = Scripter.statCommands[args[1]]
     if not scommand then
         Scripter.ScoreSummaryCommand(argtext)
         return
@@ -2511,119 +2632,6 @@ function Scripter.ScoreCommand(argtext)
 
     -- Call the selected function with everything except the original command
     scommand(Scripter.extractstr(args,2));
-end
-
-function Scripter.ListConfigCommand()
-    print("Scripter configuration:")
-
-    print("Option 'afk_action': " .. Scripter.savedVariables.userconf_afk_action)
-    if Scripter.savedVariables.userconf_quiet_combat == false then
-	print("Option 'quiet combat': disabled.")
-    else
-	print("Option 'quiet combat': enabled.")
-    end
-    if Scripter.savedVariables.debugmode == false then
-	print("Option 'debug': disabled.")
-    else
-	print("Option 'debug': enabled.")
-    end
-    if Scripter.savedVariables.userconf_quiet_effect == false then
-	print("Option 'quiet effect': disabled.")
-    else
-	print("Option 'quiet effect': enabled.")
-    end
-    if Scripter.savedVariables.userconf_quiet_inventory == false then
-	print("Option 'quiet inventory': disabled.")
-    else
-	print("Option 'quiet inventory': enabled.")
-    end
-    if Scripter.savedVariables.userconf_junkmode == false then
-	print("Option 'junk': disabled.")
-    else
-	print("Option 'junk': enabled.")
-    end
-    if Scripter.savedVariables.userconf_autobind == false then
-	print("Option 'keybind': disabled.")
-    else
-	print("Option 'keybind': enabled.")
-    end
-    print("Option 'log': " .. Scripter.savedVariables.userconf_log_max .. " lines.")
-    if Scripter.savedVariables.userconf_quiet_book == false then
-	print("Option 'quiet book': disabled.")
-    else
-	print("Option 'quiet book': enabled.")
-    end
-    if Scripter.savedVariables.userconf_quiet_money == false then
-	print("Option 'quiet money': disabled.")
-    else
-	print("Option 'quiet money': enabled.")
-    end
-    if Scripter.savedVariables.userconf_quiet == false then
-	print("Option 'quiet': disabled.")
-    else
-	print("Option 'quiet': enabled.")
-    end
-    if Scripter.savedVariables.userconf_sync == false then
-	print("Option 'sync': disabled.")
-    else
-	print("Option 'sync': enabled.")
-    end
-    if Scripter.savedVariables.userconf_sync_mail == false then
-	print("Option 'sync_mail': disabled.")
-    else
-	print("Option 'sync_mail': enabled.")
-    end
-end
-
-function Scripter.QuietConfigCommand(textarg)
-    if Scripter.savedVariables.userconf_quiet == false then
-	Scripter.savedVariables.userconf_quiet = true
-        ScripterLibGui.Hide()
-	print("Scripter: Config option 'quiet' has been enabled.")
-    else
-	Scripter.savedVariables.userconf_quiet = false
-        ScripterLibGui.Show()
-	print("Scripter: Config option 'quiet' has been disabled.")
-    end
-end
-
-function Scripter.LogConfigCommand(argtext)
-    if argtext == nil then
-        argtext = 0
-    end
-
-    local max = tonumber(argtext)
-    if max == nil then
-        print("Scripter: You must specify a numeric value.")
-        return
-    end
-    if (max < 1 or max > 1000) then
-        print("Scripter: You must specify a number between 1 and 1000.")
-        return
-    end
-
-    Scripter.savedVariables.userconf_log_max = max
-    print("Scripter: Set default printed log lines to " .. max .. ".")
-end
-
-function Scripter.AutoAcceptConfigCommand(argtext)
-    if Scripter.savedVariables.userconf_autoaccept == false then
-        Scripter.savedVariables.userconf_autoaccept = true
-        print("Scripter: Auto friend invitation accept enabled.")
-    else
-        Scripter.savedVariables.userconf_autoaccept = false
-        print("Scripter: Auto friend invitation accept disabled.")
-    end
-end
-
-function Scripter.DebugConfigCommand(textarg)
-    if Scripter.savedVariables.debugmode == false then
-			print("Scripter: Config option 'debug' has been enabled.")
-			Scripter.savedVariables.debugmode = true
-	else
-			print("Scripter: Config option 'debug' has been disabled.")
-			Scripter.savedVariables.debugmode = false
-	end
 end
 
 function Scripter.CommandResetCommand(argtext)
@@ -2651,129 +2659,6 @@ end
 function Scripter.ZoneResetCommand()
     Scripter.savedVariables.userdata_zone = {}
     print("Scripter: Cleared stored location information.")
-end
-
-function Scripter.ClearConfigCommand(argtext)
-    Scripter.TimerResetCommand(argtext)
-    Scripter.SyncResetCommand(argtext)
-    Scripter.ResetVendorCommand(argtext)
-    Scripter.ZoneResetCommand()
-    Scripter.LogResetCommand(argtext)
-    Scripter.ScoreResetCommand(argtext)
-    Scripter.CommandResetCommand(argtext)
-end
-
-function Scripter.JunkConfigCommand(textarg)
-    if Scripter.savedVariables.userconf_junkmode == false then
-			print("Scripter: Config option 'junk' has been enabled.")
-			Scripter.savedVariables.userconf_junkmode = true
-	else
-			print("Scripter: Config option 'junk' has been disabled.")
-			Scripter.savedVariables.userconf_junkmode = false
-	end
-end
-
-function Scripter.QuietBookConfigCommand(argtext)
-    if Scripter.savedVariables.userconf_quiet_book == false then
-	print("Scripter: Config option 'quiet book' has been enabled.")
-	Scripter.savedVariables.userconf_quiet_book = true
-    else
-	print("Scripter: Config option 'quiet book' has been disabled.")
-	Scripter.savedVariables.userconf_quiet_book = false
-    end
-end
-function Scripter.QuietMoneyConfigCommand(argtext)
-    if Scripter.savedVariables.userconf_quiet_money == false then
-	print("Scripter: Config option 'quiet money' has been enabled.")
-	Scripter.savedVariables.userconf_quiet_money = true
-    else
-	print("Scripter: Config option 'quiet money' has been disabled.")
-	Scripter.savedVariables.userconf_quiet_money = false
-    end
-end
-function Scripter.QuietCombatConfigCommand(argtext)
-    if Scripter.savedVariables.userconf_quiet_combat == false then
-	print("Scripter: Config option 'quiet combat' has been enabled.")
-	Scripter.savedVariables.userconf_quiet_combat = true
-    else
-	print("Scripter: Config option 'quiet combat' has been disabled.")
-	Scripter.savedVariables.userconf_quiet_combat = false
-    end
-end
-function Scripter.QuietEffectConfigCommand(argtext)
-    if Scripter.savedVariables.userconf_quiet_effect == false then
-	print("Scripter: Config option 'quiet effect' has been enabled.")
-	Scripter.savedVariables.userconf_quiet_effect = true
-    else
-	print("Scripter: Config option 'quiet effect' has been disabled.")
-	Scripter.savedVariables.userconf_quiet_effect = false
-    end
-end
-function Scripter.QuietInventoryConfigCommand(argtext)
-    if Scripter.savedVariables.userconf_quiet_inventory == false then
-	print("Scripter: Config option 'quiet inventory' has been enabled.")
-	Scripter.savedVariables.userconf_quiet_inventory = true
-    else
-	print("Scripter: Config option 'quiet inventory' has been disabled.")
-	Scripter.savedVariables.userconf_quiet_inventory = false
-    end
-end
-function Scripter.SyncConfigCommand(argtext)
-    if Scripter.savedVariables.userconf_sync == false then
-	print("Scripter: Config option 'sync' has been enabled.")
-	Scripter.savedVariables.userconf_sync = true
-    else
-	print("Scripter: Config option 'sync' has been disabled.")
-	Scripter.savedVariables.userconf_sync = false
-    end
-end
-function Scripter.SyncMailConfigCommand(argtext)
-    if Scripter.savedVariables.userconf_sync_mail == false then
-	print("Scripter: Config option 'sync mail' has been enabled.")
-	Scripter.savedVariables.userconf_sync_mail = true
-    else
-	print("Scripter: Config option 'sync mail' has been disabled.")
-	Scripter.savedVariables.userconf_sync_mail = false
-    end
-end
-
-Scripter.configCommands = {
-    ["afk"] = Scripter.AFKConfigCommand,
-    ["afk_action"] = Scripter.AFKActionConfigCommand,
-    ["autoaccept"] = Scripter.AutoAcceptConfigCommand,
-    ["clear"] = Scripter.ClearConfigCommand,
-    ["combat"] = Scripter.QuietCombatConfigCommand,
-    ["debug"] = Scripter.DebugConfigCommand,
-    ["effect"] = Scripter.QuietEffectConfigCommand,
-    ["inventory"] = Scripter.QuietInventoryConfigCommand,
-    ["junk"] = Scripter.JunkConfigCommand,
-    ["keybind"] = Scripter.SetKeybindAuto,
-    ["log"] = Scripter.LogConfigCommand,
-    ["book"] = Scripter.QuietBookConfigCommand,
-    ["money"] = Scripter.QuietMoneyConfigCommand,
-    ["quiet"] = Scripter.QuietConfigCommand,
-    ["sync"] = Scripter.SyncConfigCommand,
-    ["sync_mail"] = Scripter.SyncMailConfigCommand,
-}
-
-function Scripter.ConfigCommand(argtext)
-    if (argtext ~= nil and argtext ~= "afk") then Scripter.PreCommandCheck() end
-
-    local args = {strsplit(" ", argtext)}
-    if next(args) == nil then
-        Scripter.ListConfigCommand()
-        return
-    end
-
-    local command = Scripter.configCommands[args[1]]
-    if not command then
-        print("Unknown config option '" .. Scripter.HighlightText(args[1]) .. "'.")
-        Scripter.ConfigSlashCommandHelp()
-        return
-    end
-
-    -- Call the selected function with everything except the original command
-    command(Scripter.extractstr(args, 2))
 end
 
 function Scripter.TimeCommand(argtext)
@@ -2831,7 +2716,7 @@ function Scripter.FireTimers()
         end
     end
 
-    if (Scripter.savedVariables.userconf_afk == true and Scripter.savedVariables.usertime_afk ~= 0) then
+    if (Settings:GetValue(OPT_AFK) == true and Scripter.savedVariables.usertime_afk ~= 0) then
         if now > Scripter.savedVariables.usertime_afk then
             Scripter.AFKSleep()
         end
@@ -2962,7 +2847,7 @@ end
 function Scripter.SyncListCommand()
     print("Sync users:")
     for k,v in pairs(Scripter.savedVariables.userdata_sync) do
-        if Scripter.savedVariables.userconf_sync == false then
+        if Settings:GetValue(OPT_SYNC) == false then
             print("- " .. k)
         elseif v ~= 0 then
             print("- " .. k .. " (" .. Scripter.FormatTime(v) .. ")")
@@ -2976,14 +2861,18 @@ function Scripter.MSync_GetSyncTextInfo(prefix, data)
     if data == nil then return end
 
     local cnt = 0
-    local text = ".." .. prefix
+    local text = ""
     for k,v in pairs(data) do
         if (k ~= nil and v ~= nil) then
+            if cnt == 0 then
+                text = ".." .. prefix
+            end
+
             text = text .. ":" .. v .. " " .. k
 
             cnt = cnt + 1
 	    if cnt >= 5 then
-		text = text .. "..\n.." .. prefix
+		text = text .. "..\n"
                 cnt = 0
             end
         end
@@ -2993,15 +2882,52 @@ function Scripter.MSync_GetSyncTextInfo(prefix, data)
     return text
 end
 
+function Scripter.GetCharacterSyncOption(displayName, name)
+    local opts = Scripter.savedVariables.chardata_sync_opt[displayName]
+    if opts[name] == nil then return ScripterSettings:GetValue(name) end
+
+    return opts[name]
+end
+
+function Scripter.SetCharacterSyncOption(displayName, name, value)
+    local opts = Scripter.savedVariables.chardata_sync_opt[displayName]
+    if opts == nil then opts = {} end
+
+    opts[name] = value
+    Scripter.savedVariables.chardata_sync_opt[displayName] = opts
+end
+
 function Scripter.MSync_SendEvent(displayName)
     if displayName == nil then return end
-    local text
+    local stamp = GetTimeStamp()
+    local text = "Automatically generated by Scripter.\n\n"
 
-    text = "This message was automatically generated by Scripter.\n\n"
-    text = text .. Scripter.MSync_GetSyncTextInfo("QUE", Scripter.savedVariables.userdata_quest)
-    text = text .. Scripter.MSync_GetSyncTextInfo("ATT", Scripter.savedVariables.userdata_attr)
-    text = text .. Scripter.MSync_GetSyncTextInfo("SKI", Scripter.savedVariables.userdata_skill)
-    text = text .. Scripter.MSync_GetSyncTextInfo("ITE", Scripter.savedVariables.userdata_item_worn)
+    -- todo: parse options
+    text = "..OPT:"
+    for k,v in pairs(Scripter.savedVariables.chardata_sync_opt) do
+        if v == true then
+	    text = text .. "1 " .. k 
+        else
+	    text = text .. "0 " .. k 
+	end
+    end
+    text = text .. "..\n"
+
+    if (Scripter.GetCharacterSyncOption(displayName, OPT_SYNC_QUEST) and Scripter.savedVariables.usertime_sync_quest < stamp) then
+        text = text .. Scripter.MSync_GetSyncTextInfo("QUE", Scripter.savedVariables.userdata_quest)
+	Scripter.savedVariables.usertime_sync_quest = stamp + (ONE_HOUR * 4)
+    elseif (Scripter.GetCharacterSyncOption(displayName, OPT_SYNC_SKILL) and Scripter.savedVariables.usertime_sync_skill < stamp) then
+        text = text .. Scripter.MSync_GetSyncTextInfo("SKI", Scripter.savedVariables.userdata_skill)
+	Scripter.savedVariables.usertime_sync_skill = stamp + (ONE_HOUR * 3)
+    elseif (Scripter.GetCharacterSyncOption(displayName, OPT_SYNC_ITEM) and Scripter.savedVariables.usertime_sync_item < stamp) then
+        text = text .. Scripter.MSync_GetSyncTextInfo("ITE", Scripter.savedVariables.userdata_item_worn)
+	Scripter.savedVariables.usertime_sync_item = stamp + (ONE_HOUR * 2)
+    elseif (Scripter.GetCharacterSyncOption(displayName, OPT_SYNC_CRAFT) and Scripter.savedVariables.usertime_sync_trait < stamp) then
+        text = text .. Scripter.MSync_GetSyncTextInfo("CRA", Scripter.savedVariables.userdata_trait)
+	Scripter.savedVariables.usertime_sync_item = stamp + ONE_HOUR
+    else
+        text = text .. Scripter.MSync_GetSyncTextInfo("ATT", Scripter.savedVariables.userdata_attr)
+    end
 
     RequestOpenMailbox()	
     SendMail(displayName, "Scripter Automatic Synchronization", text)
@@ -3025,7 +2951,7 @@ end
 --     for k,v in pairs(skills) do
 --         data = data .. ":" .. v .. " " .. k
 --     end
---     for k,v in pairs(Scripter.savedVariables.userdata_score) do
+--     for k,v in pairs(Scripter.savedVariables.userdata_stat) do
 --       data = data .. ":" .. v .. " " .. k
 --     end
 -- 
@@ -3033,7 +2959,6 @@ end
 --     CHAT_SYSTEM:StartTextEntry("/w " .. displayName .. " .." .. data)
 -- end
 
--- todo: call from main event queue
 function Scripter.MSync_UpdateEvent()
     local now = GetTimeStamp()
     for k,v in pairs(Scripter.savedVariables.userdata_sync) do
@@ -3060,7 +2985,7 @@ function Scripter.SyncAddUserCommand(argtext)
         local displayName, note, playerStatus, secsSinceLogoff = GetFriendInfo(i)
         if string.match(displayName, argtext) ~= nil then
 	    Scripter.MSync_AddUser(displayName)
-            if Scripter.savedVariables.userconf_sync == true then
+            if Settings:GetValue(OPT_SYNC) == true then
                 print("Scripter: Added user '" .. Scripter.HighlightText(displayName) .. " for synchronization.")
             else
                 Scripter.MSync_SendEvent(displayName)
@@ -3105,8 +3030,9 @@ function Scripter.SyncListInfoCommand(argtext)
         end
     else
         Scripter.ScoreListStatCommand(argtext)
-        Scripter.InventorySummaryListCommand(argtext)
         Scripter.SkillCommand(argtext)
+        Scripter.ScoreListCraftCommand(argtext)
+        Scripter.InventorySummaryListCommand(argtext)
         Scripter.QuestCommand(argtext)
     end
 end
@@ -3479,6 +3405,10 @@ function Scripter.CommandListCommand(textarg)
     end
 end
 
+Scripter.afkCommands = {
+    ["/action"] = Scripter.AFKActionCommand,
+}
+
 function Scripter.ScripterCommandsCommand(argtext)
     print("Scripter commands:")
     for k,v in pairs(Scripter.helpCommands) do
@@ -3620,7 +3550,7 @@ function Scripter.NewCombatEvent( eventCode , result , isError , abilityName, ab
             elseif ( result == ACTION_RESULT_DOT_TICK or result == ACTION_RESULT_DOT_TICK_CRITICAL ) then
                 action = "invoke"
             end
-            if Scripter.savedVariables.userconf_quiet_combat == false then
+            if Settings:GetValue(OPT_NOTIFY_COMBAT) == true then
                 if powerType == 0 then
                         Scripter.notifyAction(sourceName .. " " .. action .. " " .. hitValue .. " points of '" .. Scripter.HighlightText(abilityName) .. "' " .. dmg_type .. " damage on " .. targetName .. ".")
                 elseif powerType == 6 then
@@ -3704,7 +3634,7 @@ function Scripter.NewSkillEvent(eventCode, skillCategory, skillType, reason, ran
     end
 
     local src = Scripter.GetReasonLabel(reason)
-    if Scripter.savedVariables.userconf_quiet_combat == false then
+    if Settings:GetValue(OPT_NOTIFY_COMBAT) == true then
         display = "+" .. diff .. " " .. skillName ..  " (" .. src .. ") " .. string.format("%7.2f", percent) .. "%" 
         Scripter.notifyAction(display)
     end
@@ -3722,7 +3652,7 @@ function Scripter.NewExpEvent( eventCode, unitTag, currentExp, maxExp, reason )
     local isveteran = ( eventCode == EVENT_VETERAN_POINTS_UPDATE ) and true or false
     
     if reason == PROGRESS_REASON_KILL then
-        if Scripter.savedVariables.userconf_quiet_combat == false then
+        if Settings:GetValue(OPT_NOTIFY_COMBAT) == true then
             Scripter.notifyAction("The " .. victim .. " is incapacitated.")
         end
         Scripter.addAbilityRate("Kills", 1)
@@ -3738,7 +3668,7 @@ function Scripter.NewExpEvent( eventCode, unitTag, currentExp, maxExp, reason )
         local per = 100 / maxExp * currentExp
         local per_str = string.format("%7.2f", per)
         local slay_cnt = " - x" .. math.ceil((maxExp - currentExp) / diff) .. " to level"
-        if Scripter.savedVariables.userconf_quiet_combat == false then
+        if Settings:GetValue(OPT_NOTIFY_COMBAT) == true then
             if isveteran == true then
                 Scripter.notifyAction("+" .. diff .. " VXP Points (" .. src .. ") " .. per_str .. "%" .. slay_cnt)
             else
@@ -3756,7 +3686,7 @@ function Scripter.NewExpEvent( eventCode, unitTag, currentExp, maxExp, reason )
 end
 
 function Scripter.notifyLore(x, y, categoryIndex, collectionIndex, bookIndex)
-    if Scripter.savedVariables.userconf_quiet_book == true then return end
+    if Settings:GetValue(OPT_NOTIFY_BOOK) == false then return end
 
     local zone, subzone = Scripter.GetZoneAndSubzone()
     local locX = zo_round(x*1000) / 1000
@@ -3965,7 +3895,7 @@ function Scripter.UpdateMoneyEvent()
     Scripter.savedVariables.usertemp_money = 0
 
     Scripter.addAbilityRate("Gold", diff)
-    if Scripter.savedVariables.userconf_quiet_money == false then
+    if Settings:GetValue(OPT_NOTIFY_MONEY) == true then
         if diff > 0 then
             local per = 100 / total * diff 
             Scripter.notifyAction("You gained " .. diff .. " gold. (" .. total .. " total " .. string.format("%7.2f", per) .. "%+)")
@@ -3981,10 +3911,10 @@ function Scripter.UpdateTask()
     Scripter.FireTimers()
     Scripter.UpdateMoneyEvent()
 
-    -- process incoming sync info
-    Scripter.RefreshMailEvent()
-    if Scripter.savedVariables.userconf_sync == true then
-       -- deliver outgoing sync info
+    if Settings:GetValue(OPT_SYNC) == true then
+        -- process incoming sync info
+        Scripter.RefreshMailEvent()
+        -- deliver outgoing sync info
         Scripter.MSync_UpdateEvent()
     end
 
@@ -3996,6 +3926,8 @@ end
 function Scripter.OnAddOnLoaded(event, addonName)
     if addonName ~= "Scripter" then return end
 
+    Settings = ScripterSettings:New()
+
     ScripterLibGui.initializeSavedVariable()		
     ScripterLibGui.CreateWindow()						
 
@@ -4003,13 +3935,6 @@ function Scripter.OnAddOnLoaded(event, addonName)
     CHAT_SYSTEM.OnChatEvent = Scripter.ChannelFilterEvent
     
     Scripter.savedVariables = ZO_SavedVars:NewAccountWide("Scripter_SavedVariables", 1, "default", Scripter.defaults)
-
---    already handled in ScripterLibGui
---    if Scripter.savedVariables.userconf_quiet == true then
---        ScripterLibGui.Show()
---    else
---        ScripterLibGui.Hide()
---    end
 
     -- Silently load the active bind set, if automatic mode is on.
     Scripter.LoadAutomaticBindings(true)
@@ -4038,6 +3963,9 @@ function Scripter.OnAddOnLoaded(event, addonName)
     --
     -- update guilds' character attributes
     Scripter.RefreshGuildPlayerStatInfo();
+
+    -- update character craft traits
+    Scripter.RefreshCharacterTraitInfo()
 
     Scripter.RegisterEvents()
 
@@ -4073,10 +4001,11 @@ function Scripter.SendMailCommand(argtext)
 end
 
 function Scripter.PrintMailMessageSummary(mailId)
-    local senderAccount, senderName, Subject, Icon, unread, fromSystem, fromCustomerService, isReturned, numAttachments, num2, num3, daysLeft, stamp = GetMailItemInfo( mailId )
+    local senderAccount, senderName, Subject, Icon, unread, fromSystem, fromCustomerService, isReturned, numAttachments, num2, num3, daysLeft, secs = GetMailItemInfo( mailId )
+
     local body = ReadMail(mailId)
 
-    local id = stamp - GetTimeStamp() - Scripter.savedVariables.usertemp_login
+    local id = (GetTimeStamp() - secs) % 100000
     if id < 0 then id = id * -1 end
     Scripter.savedVariables.usertemp_mail[id] = mailId
 
@@ -4132,15 +4061,21 @@ end
 function Scripter.PurgeMailCommand(argtext)
     local numMail = GetNumMailItems()
     local lastId = nil
+    local data = {}
     for m = 1, numMail, 1 do
         lastId = GetNextMailId( lastId )
+	data[lastId] = 1
+    end
 
-        local senderAccount, senderName, Subject, Icon, unread, fromSystem, fromCustomerService, isReturned, numAttachments, num2, num3, daysLeft, someNumber = GetMailItemInfo(lastId)
+    print("Purging mail:")
+    for k,v in pairs(data) do
+        local mailId = k
+        local senderAccount, senderName, Subject, Icon, unread, fromSystem, fromCustomerService, isReturned, numAttachments, num2, num3, daysLeft, someNumber = GetMailItemInfo(mailId)
         if (fromSystem == false and fromCustomerService == false and isReturned == false and numAttachments == 0) then 
             RequestOpenMailbox()
-            ReadMail(lastId) -- mark as read
-            DeleteMail(lastId, false)
-            print ("Scripter: Deleted mail message #" .. lastId .. ".")
+            ReadMail(mailId) -- mark as read
+            DeleteMail(mailId, false)
+            print ("Scripter: Deleted mail message '" .. Scripter.HighlightText(Subject) .. "'.")
         end
     end
 end
@@ -4249,10 +4184,119 @@ function Scripter.GuildCommand(argtext)
     gcommand(Scripter.extractstr(args, 2))
 end
 
+local screenshot_note = {}
+function Scripter.UIHide()
+    for i = 1, 22 do
+        screenshot_note[i] = GetSetting(ZO_OptionsWindow.controlTable[5][i].system, ZO_OptionsWindow.controlTable[5][i].settingId)
+        SetSetting(ZO_OptionsWindow.controlTable[5][i].system, ZO_OptionsWindow.controlTable[5][i].settingId, 0,0)
+        i = i + 1
+    end	
+    ToggleShowIngameGui()
+    SetGameCameraUIMode(false)
+    SetFloatingMarkerGlobalAlpha(0)	
+end
+
+function Scripter.UIShowCleanup()
+    ToggleShowIngameGui()
+    SetGameCameraUIMode(true)
+    SetFloatingMarkerGlobalAlpha(100)
+end
+
+function Scripter.UIShow()
+    zo_callLater(Scripter.UIShowCleanup, 800)
+    for i = 1, 22 do
+        SetSetting(ZO_OptionsWindow.controlTable[5][i].system, ZO_OptionsWindow.controlTable[5][i].settingId, screenshot_note[i],screenshot_note[i])
+        i = i + 1
+    end
+end
+
+function Scripter.ScreenshotCommand(argtext)
+    Scripter.UIHide()
+    TakeScreenshot()
+    Scripter.UIShow()
+end
+
+function Scripter.ResearchCommand(argtext)
+    Scripter.PreCommandCheck()
+
+    if (argtext == nil or argtext == "") then
+        print ("Backpack items:")
+        local bagId = BAG_BACKPACK
+        local max = GetBagSize(bagId)
+        for slotId = 0, max do
+            local link = GetItemLink(bagId, slotId)
+            local traitKey, isResearchable = SLTrait.GetItemTraitResearchabilityInfo(link)
+            if isResearchable == true then
+                local craftType, researchType, traitType = SLTrait.GetItemResearchInfo(link) 
+                local craftLabel = Scripter.GetItemCraftTypeLabel(craftType)
+                local traitLabel = Scripter.GetItemTraitLabel(traitType)
+                local item = Scripter.GetInventoryItem(bagId, slotId)
+                print(craftLabel .. ": " .. traitLabel .. " " .. Scripter.GetInventoryItemText(item))
+            end
+
+                local craftType, _, traitType = SLTrait.GetItemResearchInfo(link) 
+		local researchIndex = SLTrait.GetResearchLineIndex(link)
+                local traitIndex = GetItemLinkTraitInfo(link)
+
+-- 		local canSmith = CanItemBeSmithingTraitResearched(bagId, slotId, craftType, researchIndex, traitType)
+-- 		if canSmith == true then
+-- 		    print ("DEBUG: CanItemBeSmithing: True")
+--                 end
+
+-- 		local dur, timeLeft = GetSmithingResearchLineTraitTimes(craftType, researchIndex, traitType)
+-- 		if (dur ~= nil and timeLeft ~= nil) then 
+-- 		    print("DEBUG: times dur:" .. dur .. " timeLeft:" .. timeLeft)
+--                 end
+
+        end
+    else
+        Scripter.UnimplementedCommand()
+        return
+
+--         print("Researching (" .. argtext .. "):")
+--         local bagId = BAG_BACKPACK
+--         local max = GetBagSize(bagId)
+--         for slotId = 0, max do
+--             local link = GetItemLink(bagId, slotId)
+--             local i_name = ZO_LinkHandler_ParseLink(link)
+-- 	    if i_name == nil then i_name = "" end
+-- 	    i_name = Scripter.FormatItemName(i_name);
+-- 
+-- 	    if (i_name ~= "" and string.match(i_name, argtext) ~= nil) then
+--                 local traitKey, isResearchable = SLTrait.GetItemTraitResearchabilityInfo(link)
+--                 if isResearchable == false then
+--                     print("The '" .. Scripter.HighlightText(i_name) .. "' cannot be researched.")
+--                 else
+--                     ResearchSmithingTrait(bagId, slotId)
+--                     print("Scripter: You research the '" .. Scripter.HighlightText(i_name) .. "' item.");
+--                 end
+-- 
+--             end
+--         end
+    end
+end
+
+function Scripter.AFKCommand(argtext)
+    local args = {strsplit(" ", argtext)}
+    if next(args) == nil then
+        Scripter.AFKToggleCommand()
+        return
+    end
+
+    local acommand = Scripter.afkCommands[args[1]]
+    if not acommand then
+        Scripter.AFKSlashCommandHelp()
+        return
+    end
+
+    acommand(Scripter.extractstr(args,2))
+end
+
 EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_ADD_ON_LOADED, Scripter.OnAddOnLoaded)
 
 -- Wykkyd framework macro integration
 if WF_SlashCommand ~= nil then
+    WF_SlashCommand("afk", Scripter.AFKCommand)
     WF_SlashCommand("cmd", Scripter.CommandCommand)
     WF_SlashCommand("keybind", Scripter.KeybindCommand)
     WF_SlashCommand("filter", Scripter.FilterCommand)
@@ -4265,15 +4309,17 @@ if WF_SlashCommand ~= nil then
     WF_SlashCommand("sguild", Scripter.GuildCommand)
     WF_SlashCommand("sgroup", Scripter.PartyCommand)
     WF_SlashCommand("quest", Scripter.QuestCommand)
-    WF_SlashCommand("score", Scripter.ScoreCommand)
-    WF_SlashCommand("sconfig", Scripter.ConfigCommand)
+    WF_SlashCommand("research", Scripter.ResearchCommand)
+    WF_SlashCommand("stat", Scripter.ScoreCommand)
     WF_SlashCommand("scripter", Scripter.HelpCommand)
+    WF_SlashCommand("snap", Scripter.ScreenshotCommand)
     WF_SlashCommand("feedback", Scripter.SubmitCommand)
     WF_SlashCommand("sync", Scripter.SyncCommand)
     WF_SlashCommand("time", Scripter.TimeCommand)
     WF_SlashCommand("timer", Scripter.TimerCommand)
     WF_SlashCommand("vendor", Scripter.VendorCommand)
 else
+    SLASH_COMMANDS["/afk"] = Scripter.AFKCommand
     SLASH_COMMANDS["/cmd"] = Scripter.CommandCommand
     SLASH_COMMANDS["/keybind"] = Scripter.KeybindCommand
     SLASH_COMMANDS["/filter"] = Scripter.FilterCommand
@@ -4286,34 +4332,31 @@ else
     SLASH_COMMANDS["/sguild"] = Scripter.GuildCommand
     SLASH_COMMANDS["/sgroup"] = Scripter.PartyCommand
     SLASH_COMMANDS["/quest"] = Scripter.QuestCommand
-    SLASH_COMMANDS["/score"] = Scripter.ScoreCommand
-    SLASH_COMMANDS["/sconfig"] = Scripter.ConfigCommand
+    SLASH_COMMANDS["/research"] = Scripter.ResearchCommand
+    SLASH_COMMANDS["/stat"] = Scripter.ScoreCommand
     SLASH_COMMANDS["/scripter"] = Scripter.HelpCommand
     SLASH_COMMANDS["/feedback"] = Scripter.SubmitCommand
+    SLASH_COMMANDS["/snap"] = Scripter.ScreenshotCommand
     SLASH_COMMANDS["/sync"] = Scripter.SyncCommand
     SLASH_COMMANDS["/time"] = Scripter.TimeCommand
     SLASH_COMMANDS["/timer"] = Scripter.TimerCommand
     SLASH_COMMANDS["/vendor"] = Scripter.VendorCommand
 end
---
 -- TODO: /trigger
 -- TODO: /sconfig [/autorepair] [/autojunk] [/autoloot]
--- TODO: /filter <kwd>
--- TODO: /mail /delete 1
--- TODO: only send sync if user online
 
 SLASH_COMMANDS["/alias"] = Scripter.AliasCommand
 
 local function Intro()
     EVENT_MANAGER:UnregisterForEvent("Scripter", EVENT_PLAYER_ACTIVATED)
-    d("Scripter initialized. Type '/scripter' for usage.")
-    if (Scripter.savedVariables.usertemp_llogin ~= nil and Scripter.savedVariables.userconf_quiet == false) then
+    d("Scripter v" .. scripterVersion .. " initialized. Type '/scripter' for usage.")
+
+    if (Scripter.savedVariables.usertemp_llogin ~= nil and Settings:GetValue(OPT_NOTIFY) == true) then
         d("Scripter: Last login was " .. Scripter.savedVariables.usertemp_llogin)
     end
     
     Scripter.savedVariables.usertemp_llogin = Scripter.GetGameTime() 
-    Scripter.savedVariables.usertemp_login = GetTimeStamp()
- 
+
     -- start event engine
     Scripter.UpdateTask() 
 end

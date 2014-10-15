@@ -22,3 +22,9 @@ Revisions:
 [10/11/2014] Renew: /eq [<user>]
 [10/11/2014] New: /score /userlist
 [10/11/2014] Fix: /cmd /desc <cmd> <desc>
+[10/13/2014] New: /research
+[10/13/2014] Renew: /sconfig
+[10/14/2014] New: /research [<item>]
+[10/14/2014] New: /stat /craft
+[10/14/2014] New: Added load-balance to sync and included craft traits.
+[10/14/2014] Fix: /mail /purge
