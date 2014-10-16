@@ -61,7 +61,10 @@ function LAMCreateControl.colorpicker(parent, colorpickerData, controlName)
 	local control = wm:CreateTopLevelWindow(controlName or colorpickerData.reference)
 	control:SetParent(parent.scroll or parent)
 	control:SetMouseEnabled(true)
+
+	-- compatibility for api 100009 and lower
 	control.tooltipText = colorpickerData.tooltip
+
 	control:SetHandler("OnMouseEnter", ZO_Options_OnMouseEnter)
 	control:SetHandler("OnMouseExit", ZO_Options_OnMouseExit)
 	

@@ -88,7 +88,10 @@ function LAMCreateControl.dropdown(parent, dropdownData, controlName)
 	local control = wm:CreateTopLevelWindow(controlName or dropdownData.reference)
 	control:SetParent(parent.scroll or parent)
 	control:SetMouseEnabled(true)
+
+	-- compatibility for api 100009 and lower
 	control.tooltipText = dropdownData.tooltip
+
 	control:SetHandler("OnMouseEnter", ZO_Options_OnMouseEnter)
 	control:SetHandler("OnMouseExit", ZO_Options_OnMouseExit)
 	

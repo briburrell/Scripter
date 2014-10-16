@@ -47,8 +47,21 @@ function LAMCreateControl.submenu(parent, submenuData, controlName)
 	label:SetWrapMode(TEXT_WRAP_MODE_ELLIPSIS)
 	label:SetText(submenuData.name)
 	label:SetMouseEnabled(true)
-	if submenuData.tooltip then
+
+
+	if (
+		-- compatibilty for api 100009 and lower
+		submenuData.tooltip or
+		-- api 100010
+		submenuData.tooltipText
+	) then
+
+		-- compatibilty for api 100009 and lower
 		label.tooltipText = submenuData.tooltip
+
+		-- api 100010
+		label.data = { tooltipText = submenuData.tooltipText }
+
 		label:SetHandler("OnMouseEnter", ZO_Options_OnMouseEnter)
 		label:SetHandler("OnMouseExit", ZO_Options_OnMouseExit)
 	end

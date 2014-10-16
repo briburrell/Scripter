@@ -11,6 +11,7 @@ local MAJOR, MINOR = "LibAddonMenu-2.0", 15
 local lam, oldminor = LibStub:NewLibrary(MAJOR, MINOR)
 if not lam then return end	--the same or newer version of this lib is already loaded into memory 
 local apiVersion = 100009
+local UpdateOptionsTable
 
 --UPVALUES--
 local wm = WINDOW_MANAGER
@@ -191,9 +192,23 @@ end
 --	addonID = "string"; the same string passed to :RegisterAddonPanel
 --	optionsTable = table; the table containing all of the options controls and their data
 function lam:RegisterOptionControls(addonID, optionsTable)	--optionsTable = {sliderData, buttonData, etc}
+	if apiVersion >= 100010 then
+		UpdateOptionsTable(optionsTable)
+	end
 	addonToOptionsMap[addonID] = optionsTable
 end
 
+UpdateOptionsTable = function(optionsTable)
+	for _, widgetData in ipairs(optionsTable) do
+	   if widgetData.type == "submenu" then
+	       UpdateOptionsTable(widgetData.controls)
+	   end
+	   if widgetData.tooltipText == nil then
+	       widgetData.tooltipText = widgetData.tooltip
+	       widgetData.tooltip = nil
+	   end
+	end
+end
 
 --INTERNAL FUNCTION
 --handles switching between LAM's Addon Settings panel and other panels in the Settings menu

@@ -2988,6 +2988,7 @@ function Scripter.SyncAddUserCommand(argtext)
             if Settings:GetValue(OPT_SYNC) == true then
                 print("Scripter: Added user '" .. Scripter.HighlightText(displayName) .. " for synchronization.")
             else
+-- todo: call multiple times based until up-to-date
                 Scripter.MSync_SendEvent(displayName)
                 print("Scripter: Sent synchronization to user '" .. Scripter.HighlightText(displayName) .. ".")
             end
