@@ -6,7 +6,7 @@ Scripter = {}
 local Scripter = Scripter
 local ScripterSL = ZO_Object:Subclass()
 local Settings
-local scripterVersion = 1.91
+local scripterVersion = 1.92
 
 -- Localize builtin functions we use 
 local ipairs = ipairs
@@ -1552,8 +1552,8 @@ function Scripter.NewQuestAddEvent(eventCode, questIndex, questName, objectiveNa
     Scripter.PreEventCheck()
 
     local zoneName = GetJournalQuestLocationInfo(questIndex)
-    if zoneName ~= "" then zoneName = "Global" end
-    Scripter.savedVariables.userdata_quest[questName] = qi.zoneName
+    if (zoneName == nil or zoneName == "") then zoneName = "Global" end
+    Scripter.savedVariables.userdata_quest[questName] = zoneName
 end
 
 function Scripter.NewQuestCompleteEvent(eventCode, questName, level, prevXp, curXp, rank, prevPoints, curPoints)
