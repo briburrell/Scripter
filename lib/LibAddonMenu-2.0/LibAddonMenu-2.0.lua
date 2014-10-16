@@ -7,10 +7,10 @@
 
 
 --Register LAM with LibStub
-local MAJOR, MINOR = "LibAddonMenu-2.0", 8
+local MAJOR, MINOR = "LibAddonMenu-2.0", 15
 local lam, oldminor = LibStub:NewLibrary(MAJOR, MINOR)
 if not lam then return end	--the same or newer version of this lib is already loaded into memory 
-
+local apiVersion = 100009
 
 --UPVALUES--
 local wm = WINDOW_MANAGER
@@ -22,7 +22,8 @@ local _
 local addonsForList = {}
 local addonToOptionsMap = {}
 local optionsCreated = {}
-local widgets = {}
+lam.widgets = lam.widgets or {}
+local widgets = lam.widgets
 
 
 --METHOD: REGISTER WIDGET--
@@ -56,7 +57,17 @@ function lam:OpenToPanel(panel)
 	zo_callLater(function()
 			ZO_GameMenu_InGame.gameMenu.headerControls[locSettings]:SetOpen(true)
 			SCENE_MANAGER:AddFragment(OPTIONS_WINDOW_FRAGMENT)
-			ZO_OptionsWindow_ChangePanels(lam.panelID)
+			if apiVersion < 100010 then
+				ZO_OptionsWindow_ChangePanels(lam.panelID)
+			else
+				KEYBOARD_OPTIONS:ChangePanels(lam.panelID)
+			end
+			if not lam.panelSubCategoryControl then
+				lam.panelSubCategoryControl = _G["ZO_GameMenu_InGameNavigationContainerScrollChildZO_GameMenu_SubCategory"..(lam.panelID + 1)]
+			end
+			if apiVersion < 100010 then
+				ZO_TreeEntry_OnMouseUp(lam.panelSubCategoryControl, true)
+                        end
 			panel:SetHidden(false)
 		end, 200)
 end
@@ -218,13 +229,19 @@ end
 local function CreateAddonSettingsPanel()
 	if not LAMSettingsPanelCreated then
 		local controlPanelID = "LAM_ADDON_SETTINGS_PANEL"
-		local controlPanelNames = {en = "Addon Settings", fr = "Extensions", de = "Erweiterungen"}
+		--Russian for TERAB1T's RuESO addon, which creates an "ru" locale
+		--game font does not support Cyrillic, so they are using custom fonts + extended latin charset
+		local controlPanelNames = {en = "Addon Settings", fr = "Extensions", de = "Erweiterungen", ru = "Îacòpoéêè äoïoìîeîèé"}
 
-		ZO_OptionsWindow_AddUserPanel(controlPanelID, controlPanelNames[GetCVar("Language.2")])
+		ZO_OptionsWindow_AddUserPanel(controlPanelID, controlPanelNames[GetCVar("Language.2")] or controlPanelName["en"])
 
 		lam.panelID = _G[controlPanelID]
 		
-		ZO_PreHook("ZO_OptionsWindow_ChangePanels", HandlePanelSwitching)
+		if apiVersion < 100010 then 
+			ZO_PreHook("ZO_OptionsWindow_ChangePanels", HandlePanelSwitching)
+                else
+			ZO_PreHook(ZO_SharedOptions, "ZO_OptionsWindow_ChangePanels", HandlePanelSwitching)
+                end
 		
 		LAMSettingsPanelCreated = true
 	end
@@ -235,14 +252,14 @@ end
 --adds each registered addon to the menu in LAM's panel
 local function CreateAddonButtons(list, addons)
 	for i = 1, #addons do
-		local button = wm:CreateControlFromVirtual("LAMAddonMenuButton"..i, list, "ZO_DefaultTextButton")
+		local button = wm:CreateControlFromVirtual("LAMAddonMenuButton"..i, list.scrollChild, "ZO_DefaultTextButton")
 		button.name = addons[i].name
 		button.panel = _G[addons[i].panel]
 		button:SetText(button.name)
 		button:SetHorizontalAlignment(TEXT_ALIGN_LEFT)
 		button:SetWidth(190)
 		if i == 1 then
-			button:SetAnchor(TOPLEFT, list, TOPLEFT, 5, 5)
+			button:SetAnchor(TOPLEFT, list.scrollChild, TOPLEFT, 5, 5)
 		else
 			button:SetAnchor(TOPLEFT, _G["LAMAddonMenuButton"..i-1], BOTTOMLEFT)
 		end
@@ -268,6 +285,9 @@ local function CreateAddonList()
 	bg:SetEdgeTexture("EsoUI\\Art\\miscellaneous\\borderedinsettransparent_edgefile.dds", 128, 16)
 	bg:SetCenterColor(0, 0, 0, 0)
 
+	list.scrollChild = LAMAddonPanelsMenuScrollChild
+	list.scrollChild:SetResizeToFitPadding(0, 15)
+	
 	local generatedButtons
 	list:SetHandler("OnShow", function(self)
 			if not generatedButtons and #addonsForList > 0 then
@@ -287,13 +307,26 @@ local function CreateAddonList()
 	list.controlType = OPTIONS_CUSTOM
 	list.panel = lam.panelID
 	
-	ZO_OptionsWindow_InitializeControl(list)
+	if apiVersion < 100010 then 
+		ZO_OptionsWindow_InitializeControl(list)
+	else
+		list.data = {}
+		list.data.controlType = OPTIONS_CUSTOM
+		list.data.panel = lam.panelID
+		KEYBOARD_OPTIONS:InitializeControl(list)
+	end
 
 	return list
 end
 
+local function InitApiVer()
+    if KEYBOARD_OPTIONS then
+        apiVersion = 100010
+    end
+end
 
 --INITIALIZING
+InitApiVer()
 CreateAddonSettingsPanel()
 CreateAddonList()
 
