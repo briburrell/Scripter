@@ -64,10 +64,7 @@ function LAMCreateControl.editbox(parent, editboxData, controlName)
 	control:SetParent(parent.scroll or parent)
 	control:SetMouseEnabled(true)
 	control:SetResizeToFitDescendents(true)
-
-	-- compatibility for api 100009 and lower
 	control.tooltipText = editboxData.tooltip
-
 	control:SetHandler("OnMouseEnter", ZO_Options_OnMouseEnter)
 	control:SetHandler("OnMouseExit", ZO_Options_OnMouseExit)
 	

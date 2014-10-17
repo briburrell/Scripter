@@ -107,10 +107,7 @@ function LAMCreateControl.checkbox(parent, checkboxData, controlName)
 	local control = wm:CreateTopLevelWindow(controlName or checkboxData.reference)
 	control:SetParent(parent.scroll or parent)
 	control:SetMouseEnabled(true)
-
-	-- compatibility for api 100009 and lower
 	control.tooltipText = checkboxData.tooltip
-
 	control:SetHandler("OnMouseEnter", OnMouseEnter)
 	control:SetHandler("OnMouseExit", OnMouseExit)
 	control:SetHandler("OnMouseUp", function(control)

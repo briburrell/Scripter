@@ -1,5 +1,5 @@
 ## Title: |c9966ffScripter|cffffff
-## Version: 1.92
+## Version: 1.93
 ## Author: Neo Natura
 ## APIVersion: 100009
 ## SavedVariables: Scripter_SavedVariables

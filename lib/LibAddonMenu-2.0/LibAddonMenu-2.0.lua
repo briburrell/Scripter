@@ -7,11 +7,10 @@
 
 
 --Register LAM with LibStub
-local MAJOR, MINOR = "LibAddonMenu-2.0", 15
+local MAJOR, MINOR = "LibAddonMenu-2.0", 14
 local lam, oldminor = LibStub:NewLibrary(MAJOR, MINOR)
 if not lam then return end	--the same or newer version of this lib is already loaded into memory 
-local apiVersion = 100009
-local UpdateOptionsTable
+
 
 --UPVALUES--
 local wm = WINDOW_MANAGER
@@ -58,17 +57,11 @@ function lam:OpenToPanel(panel)
 	zo_callLater(function()
 			ZO_GameMenu_InGame.gameMenu.headerControls[locSettings]:SetOpen(true)
 			SCENE_MANAGER:AddFragment(OPTIONS_WINDOW_FRAGMENT)
-			if apiVersion < 100010 then
-				ZO_OptionsWindow_ChangePanels(lam.panelID)
-			else
-				KEYBOARD_OPTIONS:ChangePanels(lam.panelID)
-			end
+			ZO_OptionsWindow_ChangePanels(lam.panelID)
 			if not lam.panelSubCategoryControl then
 				lam.panelSubCategoryControl = _G["ZO_GameMenu_InGameNavigationContainerScrollChildZO_GameMenu_SubCategory"..(lam.panelID + 1)]
 			end
-			if apiVersion < 100010 then
-				ZO_TreeEntry_OnMouseUp(lam.panelSubCategoryControl, true)
-                        end
+			ZO_TreeEntry_OnMouseUp(lam.panelSubCategoryControl, true)
 			panel:SetHidden(false)
 		end, 200)
 end
@@ -192,23 +185,9 @@ end
 --	addonID = "string"; the same string passed to :RegisterAddonPanel
 --	optionsTable = table; the table containing all of the options controls and their data
 function lam:RegisterOptionControls(addonID, optionsTable)	--optionsTable = {sliderData, buttonData, etc}
-	if apiVersion >= 100010 then
-		UpdateOptionsTable(optionsTable)
-	end
 	addonToOptionsMap[addonID] = optionsTable
 end
 
-UpdateOptionsTable = function(optionsTable)
-	for _, widgetData in ipairs(optionsTable) do
-	   if widgetData.type == "submenu" then
-	       UpdateOptionsTable(widgetData.controls)
-	   end
-	   if widgetData.tooltipText == nil then
-	       widgetData.tooltipText = widgetData.tooltip
-	       widgetData.tooltip = nil
-	   end
-	end
-end
 
 --INTERNAL FUNCTION
 --handles switching between LAM's Addon Settings panel and other panels in the Settings menu
@@ -252,11 +231,7 @@ local function CreateAddonSettingsPanel()
 
 		lam.panelID = _G[controlPanelID]
 		
-		if apiVersion < 100010 then 
-			ZO_PreHook("ZO_OptionsWindow_ChangePanels", HandlePanelSwitching)
-                else
-			ZO_PreHook(ZO_SharedOptions, "ZO_OptionsWindow_ChangePanels", HandlePanelSwitching)
-                end
+		ZO_PreHook("ZO_OptionsWindow_ChangePanels", HandlePanelSwitching)
 		
 		LAMSettingsPanelCreated = true
 	end
@@ -322,26 +297,13 @@ local function CreateAddonList()
 	list.controlType = OPTIONS_CUSTOM
 	list.panel = lam.panelID
 	
-	if apiVersion < 100010 then 
-		ZO_OptionsWindow_InitializeControl(list)
-	else
-		list.data = {}
-		list.data.controlType = OPTIONS_CUSTOM
-		list.data.panel = lam.panelID
-		KEYBOARD_OPTIONS:InitializeControl(list)
-	end
+	ZO_OptionsWindow_InitializeControl(list)
 
 	return list
 end
 
-local function InitApiVer()
-    if KEYBOARD_OPTIONS then
-        apiVersion = 100010
-    end
-end
 
 --INITIALIZING
-InitApiVer()
 CreateAddonSettingsPanel()
 CreateAddonList()
 

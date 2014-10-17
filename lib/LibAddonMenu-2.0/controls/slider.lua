@@ -77,10 +77,7 @@ function LAMCreateControl.slider(parent, sliderData, controlName)
 		control:SetDimensions(510, 40)
 	end
 	control:SetMouseEnabled(true)
-
-	-- compatibility for api 100009 and lower
 	control.tooltipText = sliderData.tooltip
-
 	control:SetHandler("OnMouseEnter", ZO_Options_OnMouseEnter)
 	control:SetHandler("OnMouseExit", ZO_Options_OnMouseExit)
 	

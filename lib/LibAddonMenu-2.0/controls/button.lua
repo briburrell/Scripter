@@ -54,14 +54,7 @@ function LAMCreateControl.button(parent, buttonData, controlName)
 	local button = control.button
 	button:SetAnchor(isHalfWidth and CENTER or RIGHT)
 	button:SetClickSound("Click")
-	
-	-- compatibility for api 100009 and lower
 	button.tooltipText = buttonData.tooltip
-
-	-- api 10010
-	button.data = { tooltipText = buttonData.tooltipText }
-
-
 	button:SetHandler("OnMouseEnter", ZO_Options_OnMouseEnter)
 	button:SetHandler("OnMouseExit", ZO_Options_OnMouseExit)
 	button:SetHandler("OnClicked", function(self, ...)

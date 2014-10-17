@@ -36,20 +36,9 @@ function LAMCreateControl.texture(parent, textureData, controlName)
 	texture:SetDimensions(textureData.imageWidth, textureData.imageHeight)
 	texture:SetTexture(textureData.image)
 	
-	if (
-		-- compatibility for api 100009 and lower
-		textureData.tooltip or
-		-- api 100010
-		textureData.tooltipText
-	) then
+	if textureData.tooltip then
 		texture:SetMouseEnabled(true)
-
-		-- compatibility for api 100009 and lower
 		texture.tooltipText = textureData.tooltip
-
-		-- api 100010
-		texture.data = { tooltipText = textureData.tooltipText }
-
 		texture:SetHandler("OnMouseEnter", ZO_Options_OnMouseEnter)
 		texture:SetHandler("OnMouseEnter", ZO_Options_OnMouseExit)
 	end
