@@ -1,3 +1,5 @@
+[10/21/2014] Release: v1.95 submitted
+[10/21/2014 #1106] Fix: Party invite throwing exception.
 [10/21/2014] Release: v1.94 submitted
 [10/21/2014 #1090] New: In manual mode '/sync <user>' now sends all relevant mail notifications required for a complete update (per user configuration).
 [10/21/2014 #1105] Fix: /sync <user> throwing exception on notification send. 

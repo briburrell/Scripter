@@ -6,7 +6,7 @@ Scripter = {}
 local Scripter = Scripter
 local ScripterSL = ZO_Object:Subclass()
 local Settings
-local scripterVersion = 1.94
+local scripterVersion = 1.95
 
 -- Localize builtin functions we use 
 local ipairs = ipairs
@@ -775,6 +775,8 @@ function Scripter.PreCommandCheck()
 end
 
 function Scripter.ChannelFilter(eventType, messageType, fromName, text)
+    if text == nil then return false end
+    if type(text) ~= "string" then return end
 --     if (messageType ~= CHAT_CHANNEL_WHISPER and messageType ~= 4) then
 --         return false
 --     end
@@ -786,11 +788,12 @@ function Scripter.ChannelFilter(eventType, messageType, fromName, text)
 --     return true
 
 
-    for k,w in pairs(Scripter.savedVariables.userdata_filter) do
+    for k,v in pairs(Scripter.savedVariables.userdata_filter) do
         if string.match(text, k) ~= nil then
             return true
         end
     end
+
     return false
 end
 
@@ -2754,6 +2757,7 @@ end
 
 function Scripter.SyncResetCommand(argtext)
     Scripter.savedVariables.userdata_sync = {}
+    Scripter.savedVariables.chardata_sync = {}
     print("Scripter: Cleared synchronization user list.")
 end
 

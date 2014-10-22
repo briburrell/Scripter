@@ -274,7 +274,7 @@ function ScripterSettings:CreateOptionsMenu()
         [19] = {
             type = "dropdown",
             name = "AFK Action Command",
-	    choices = { "<none>", "bored", "dance", "faint", "goaway", "juggleflame", "kick", "laugh", "phew", "playdead", "sigh", "sit", "spit", "surprised", "tilt", "yawn", "wave", },
+	    choices = { "<none>", "bored", "dance", "faint", "goaway", "juggleflame", "kick", "laugh", "leanbackcoin", "phew", "playdead", "sigh", "sit", "spit", "surprised", "tilt", "yawn", "wave", },
             tooltip = settingsLabel[OPT_AFK_ACTION],
             getFunc = function() 
 	    	return self:GetValue(OPT_AFK_ACTION)
