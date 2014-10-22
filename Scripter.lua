@@ -6,7 +6,7 @@ Scripter = {}
 local Scripter = Scripter
 local ScripterSL = ZO_Object:Subclass()
 local Settings
-local scripterVersion = 1.92
+local scripterVersion = 1.94
 
 -- Localize builtin functions we use 
 local ipairs = ipairs
@@ -50,7 +50,7 @@ local function print(...)
 end
 
 local default_help_desc = {
-    ["/afk"] = "Manage \"away from keyboard\" mode.",
+    ["/away"] = "Manage \"away from keyboard\" mode.",
     ["/alias"] = "Create and manage slash commands.",
     ["/cmd"] = "Display slash commands.",
     ["/eq"] = "Character inventory.",
@@ -96,6 +96,8 @@ Scripter.defaults = {
     ["autoSets"] = {},
     ["log"] = {},
     ["log_idx"] = 0,
+    ["chat"] = {},
+    ["chat_idx"] = 0,
     -- timed events
     ["usertime_afk"] = 0,
     ["usertime_mail"] = 0,
@@ -714,37 +716,54 @@ function Scripter.FormatTime(time)
 	return string.format("%s", timeString)
 end
 
+function Scripter.isPlayerAfk()
+    if GetPlayerStatus() == PLAYER_STATUS_AWAY then
+        return true;
+    end
+    return false;
+end
 
--- reset afk mode
+function Scripter.setPlayerAfk(isAfk)
+    if isAfk == true then
+        SelectPlayerStatus(PLAYER_STATUS_AWAY);
+    else
+        SelectPlayerStatus(PLAYER_STATUS_ONLINE);
+    end
+end
+
 function Scripter.ResetAfkMode()
-    Settings:SetValue(OPT_AFK, false)
+    Scripter.setPlayerAfk(false);
     Scripter.savedVariables.usertime_afk = 0
 end
 
 function Scripter.AFKWake()
-    if Settings:GetValue(OPT_AFK) == false then return end
+    if Scripter.isPlayerAfk() == false then return end
 
     Scripter.ResetAfkMode()
     print ("Scripter: Character AFK mode disabled.")
 end
 
 function Scripter.AFKSleep()
-    if Settings:GetValue(OPT_AFK) == false then return end
+    if Scripter.isPlayerAfk() == false then return end
+
+    Scripter.savedVariables.usertime_afk = Scripter.GetTimerOffset() + 60000
+    Scripter.PrintDebug("AFKSleep " .. Scripter.FormatTime(GetTimeStamp() + 60))
+
+    local cmd_base = Settings:GetValue(OPT_AFK_ACTION)
+    if cmd_base == "<none>" then return end
 
     afk_index = afk_index + 1
     if afk_index > 6 then afk_index = 2 end
-    local cmd_name = "/" .. Settings:GetValue(OPT_AFK_ACTION) .. afk_index
+    local cmd_name = "/" .. cmd_base .. afk_index
     mcommand = SLASH_COMMANDS[cmd_name]
     if mcommand == nil then
-        cmd_name = "/" .. Settings:GetValue(OPT_AFK_ACTION)
+        cmd_name = "/" .. cmd_base
         mcommand = SLASH_COMMANDS[cmd_name]
     end
     if mcommand ~= nil then
         mcommand("")
     end
 
-    Scripter.savedVariables.usertime_afk = Scripter.GetTimerOffset() + 60000
-    Scripter.PrintDebug("AFKSleep " .. Scripter.FormatTime(GetTimeStamp() + 60))
 end
 
 function Scripter.PreEventCheck()
@@ -776,9 +795,8 @@ function Scripter.ChannelFilter(eventType, messageType, fromName, text)
 end
 
 function Scripter.AppendLog(ntext)
-	if ntext == "" then
-        return;
-    end
+    if ntext == "" then return end
+
     if Scripter.savedVariables.log_idx == 1000 then
         Scripter.savedVariables.log_idx = 0
     end
@@ -796,6 +814,86 @@ function Scripter.notifyAction(ntext)
     Scripter.AppendLog(ntext)
 end
 
+function Scripter.ChatListCommand(argtext)
+    print("Chat History:")
+
+    local max = Settings:GetValue(OPT_CHAT_MAX)
+
+    local cnt = 0
+    for i = Scripter.savedVariables.chat_idx + 1, 1000, 1 do
+        if Scripter.savedVariables.chat[i] ~= nil then
+            if cnt > (1000 - max) then
+                print(Scripter.savedVariables.chat[i])
+            end
+        end
+        cnt = cnt + 1
+    end
+
+    for i = 1, Scripter.savedVariables.chat_idx, 1 do
+        if Scripter.savedVariables.chat[i] ~= nil then
+            if cnt > (1000 - max) then
+                print(Scripter.savedVariables.chat[i])
+            end
+        end
+        cnt = cnt + 1
+    end
+end
+
+local channelType = {
+    ["whisper sent"] = CHAT_CHANNEL_WHISPER_SENT,
+    ["whisper"] = CHAT_CHANNEL_WHISPER,
+    ["party"] = CHAT_CHANNEL_PARTY,
+    ["monster"] = CHAT_CHANNEL_MONSTER_SAY,
+    ["emote"] = CHAT_CHANNEL_EMOTE,
+    ["yell"] = CHAT_CHANNEL_YELL,
+    ["say"] = CHAT_CHANNEL_SAY,
+    ["guild1"] = CHAT_CHANNEL_GUILD_1,
+    ["guild2"] = CHAT_CHANNEL_GUILD_2,
+    ["guild3"] = CHAT_CHANNEL_GUILD_3,
+    ["guild4"] = CHAT_CHANNEL_GUILD_4,
+    ["guild5"] = CHAT_CHANNEL_GUILD_5,
+    ["zone"] = CHAT_CHANNEL_ZONE_LANGUAGE_1,
+    ["sys"] = CHAT_CHANNEL_SYSTEM,
+}
+
+function Scripter.GetChannelType(messageType)
+    for k,v in pairs(channelType) do
+        if v == messageType then 
+            return k
+        end
+    end
+
+    return "unknown"
+end
+
+function Scripter.StoreChannelText(eventType, messageType, fromName, text)
+    if messageType == CHAT_CHANNEL_SYSTEM then return end 
+    if text == "" then return end
+    local cType = Scripter.GetChannelType(messageType)
+    if cType == "unknown" then return end
+
+    local selfName = GetUnitName('player')
+    local dispName = GetDisplayName()
+    fromName = Scripter.ResolveCharacterName(fromName)
+
+    if Scripter.savedVariables.chat_idx == 1000 then
+        Scripter.savedVariables.chat_idx = 0
+    end
+
+    Scripter.savedVariables.chat_idx = Scripter.savedVariables.chat_idx + 1
+    local tstr = Scripter.FormatTime(GetTimeStamp())
+    local cType = Scripter.GetChannelType(messageType)
+    cType = "/" .. string.sub(cType, 0, 3)
+    if messageType == CHAT_CHANNEL_WHISPER_SENT then
+        cType = "->" .. cType
+    end
+
+    if (fromName == dispName or fromName == selfName) then
+        Scripter.savedVariables.chat[Scripter.savedVariables.chat_idx] = "[" .. tstr .. cType .. "] " .. text
+    else
+        Scripter.savedVariables.chat[Scripter.savedVariables.chat_idx] = "[" .. tstr .. " " .. Scripter.HighlightText(fromName) .. cType .. "] " .. text
+    end
+end
 
 local NativeChannelEvent = nil
 function Scripter.ChannelFilterEvent(control, ...)
@@ -805,7 +903,9 @@ function Scripter.ChannelFilterEvent(control, ...)
     if Scripter.ChannelFilter(...) then
         return
     end
+
     NativeChannelEvent(control, ...)
+    Scripter.StoreChannelText(...)
 end
 
 function NewSyncChannelEvent(sender, message)
@@ -1026,12 +1126,12 @@ function Scripter.AddItemEvent(eventId, bagId, slotId, itemSoundCategory, update
     Scripter.addAbilityRate("Loot", 1)
     if Settings:GetValue(OPT_NOTIFY_INVENTORY) == false then return end
 
-    local link = GetItemLink(bagId, slotId,LINK_STYLE_BRACKETS)
+    local link = GetItemLink(bagId, slotId)
     local name,col,typID,id,qual,levelreq,enchant,ench1,ench2,un1,un2,un3,un4,un5,un6,un7,un8,un9,style,un10,bound,charge,un11=ZO_LinkHandler_ParseLink(link)
 
     name = Scripter.FormatItemName(name)
     if levelreq ~= nil then
-        Scripter.notifyAction("Obtained item " .. name .. " Lv " .. levelreq .. ".")
+        Scripter.notifyAction("Obtained item '" .. Scripter.HighlightText(name) .. "' Lv " .. levelreq .. ".")
     end
 end
 
@@ -1658,8 +1758,8 @@ function Scripter.ResearchSlashCommandHelp()
 --    print("- /research <item>  |cff8f41  Research a item in the backpack.")
 end
 function Scripter.AFKSlashCommandHelp()
-    print("- /afk  |cff8f41  Toggle character's AFK mode.")
-    print("- /afk /action <cmd>  |cff8f41  Set the action to perform while in AFK mode.")
+    print("- /away  |cff8f41  Toggle character's AFK mode.")
+    print("- /away /action <cmd>  |cff8f41  Set the action to perform while in AFK mode.")
 end
 
 function Scripter.FormatDate(time)
@@ -1712,31 +1812,32 @@ function Scripter.FormatSecondsToDDHHMMSS(secsSinceLogoff)
 end
 
 function Scripter.AFKToggleCommand(argtext)
-    if Settings:GetValue(OPT_AFK) == false then
-        Settings:SetValue(OPT_AFK, true)
+    if Scripter.isPlayerAfk() == false then
+        Scripter.setPlayerAfk(true);
 	print("Scripter: Character AFK mode enabled.")
 	Scripter.AFKSleep()
     else
-        Settings:SetValue(OPT_AFK, false)
+        Scripter.setPlayerAfk(false);
 	print("Scripter: Character AFK mode disabled.")
 	Scripter.AFKWake()
     end
 end
 
 function Scripter.AFKActionCommand(argtext)
-    if (argtext == nil or argtext == "") then
-        print("Scripter: You must specify a command.")
-        return
-    end
-
+    if argtext == nil then argtext = "" end
     argtext = string.gsub(argtext, "(/)", "")
-    if (SLASH_COMMANDS["/"..argtext] == nil and SLASH_COMMANDS["/"..argtext.."2"] == nil) then
-        print("Scripter: Unknown command '/" .. Scripter.HighlightText(argtext) .. "' specified.")
-        return
+
+    if (argtext ~= "" and argtext ~= "<none>") then 
+        if (SLASH_COMMANDS["/"..argtext] == nil and SLASH_COMMANDS["/"..argtext.."2"] == nil) then
+            print("Scripter: Unknown command '/" .. Scripter.HighlightText(argtext) .. "' specified.")
+            return
+        end
+        print("Scripter: Set character AFK action to '/" .. Scripter.HighlightText(argtext) .. "'.")
+    else
+        print("Scripter: Unset character AFK action.")
     end
 
     Settings:SetValue(OPT_AFK_ACTION, argtext)
-    print("Scripter: Set character AFK action to '/" .. Scripter.HighlightText(argtext) .. "'.")
 end
 
 function Scripter.OnlineFriendCommand()
@@ -1782,10 +1883,11 @@ Scripter.friendCommands = {
 function Scripter.LogSlashCommandHelp()
     print("- /log  |cff8f41  Show recent character log messages.")
     print("- /log <msg>  |cff8f41  Add a message to the log.")
-	print("- /log /filter <kwd>  |cff8f41  Show messages matching keyword.")
-	print("- /log /full  |cff8f41  Show last 1000 log messages.")
-	print("- /log /print <msg>  |cff8f41  Log and print a message.")
+    print("- /log /chat  |cff8f41  Show recent chat history.")
     print("- /log /clear  |cff8f41  Clear log contents.")
+    print("- /log /filter <kwd>  |cff8f41  Show messages matching keyword.")
+    print("- /log /full  |cff8f41  Show last 1000 log messages.")
+    print("- /log /print <msg>  |cff8f41  Log and print a message.")
 end
 
 function Scripter.ScoreSlashCommandHelp()
@@ -1913,7 +2015,7 @@ function Scripter.ScreenshotSlashCommandHelp()
 end
 
 Scripter.helpCommands = {
-    ["afk"] = Scripter.AFKSlashCommandHelp,
+    ["away"] = Scripter.AFKSlashCommandHelp,
     ["alias"] = Scripter.AliasSlashCommandHelp,
     ["cmd"] = Scripter.CommandSlashCommandHelp,
     ["eq"] = Scripter.InventorySlashCommandHelp,
@@ -2242,14 +2344,15 @@ function Scripter.LogFilterListCommand(argtext)
 end
 
 Scripter.logCommands = {
+    ["/chat"] = Scripter.ChatListCommand,
+    ["/clear"] = Scripter.LogResetCommand,
     ["/filter"] = Scripter.LogFilterListCommand,
     ["/full"] = Scripter.LogFullListCommand,
     ["/print"] = Scripter.LogPrintCommand,
-    ["/clear"] = Scripter.LogResetCommand,
 }
 
 function Scripter.LogListCommand(argtext)
-    print("History:")
+    print("Log History:")
 
     local max = Settings:GetValue(OPT_LOG_MAX)
 
@@ -2385,8 +2488,11 @@ function Scripter.ScoreExpCommand(argtext)
     local level = GetUnitLevel('player')
     local text = ""
     
-    text = "|cFFFFFFLevel " .. level .. " " .. " " .. class .. " '" .. Scripter.HighlightText(name) .. "', " .. xp .. " XP Points " .. string.format("%7.2f", per) .. "%"
-    if vxp ~= 0 then
+    text = "|cFFFFFFLevel " .. level .. " " .. " " .. class .. " '" .. Scripter.HighlightText(name) .. "', " .. xp .. " XP Points"
+    if GetUnitXPMax('player') > xp then
+        text = text .. " " .. string.format("%7.2f", per) .. "%"
+    end
+    if vxp > 0 then
         local vper = 100 / GetUnitVeteranPointsMax('player') * vxp
         text = text .. "  VXP: " .. vxp .. " Points " .. string.format("%7.2f", vper) .. "%"
     end
@@ -2716,7 +2822,7 @@ function Scripter.FireTimers()
         end
     end
 
-    if (Settings:GetValue(OPT_AFK) == true and Scripter.savedVariables.usertime_afk ~= 0) then
+    if (Scripter.isPlayerAfk() == true and Scripter.savedVariables.usertime_afk ~= 0) then
         if now > Scripter.savedVariables.usertime_afk then
             Scripter.AFKSleep()
         end
@@ -2884,7 +2990,7 @@ end
 
 function Scripter.GetCharacterSyncOption(displayName, name)
     local opts = Scripter.savedVariables.chardata_sync_opt[displayName]
-    if opts[name] == nil then return ScripterSettings:GetValue(name) end
+    if (opts == nil or opts[name] == nil) then return Settings:GetValue(name) end
 
     return opts[name]
 end
@@ -2897,41 +3003,69 @@ function Scripter.SetCharacterSyncOption(displayName, name, value)
     Scripter.savedVariables.chardata_sync_opt[displayName] = opts
 end
 
-function Scripter.MSync_SendEvent(displayName)
+function Scripter.MSync_SendEvent(displayName, isManual)
     if displayName == nil then return end
     local stamp = GetTimeStamp()
-    local text = "Automatically generated by Scripter.\n\n"
 
     -- todo: parse options
-    text = "..OPT:"
-    for k,v in pairs(Scripter.savedVariables.chardata_sync_opt) do
-        if v == true then
-	    text = text .. "1 " .. k 
-        else
-	    text = text .. "0 " .. k 
-	end
-    end
-    text = text .. "..\n"
+--     text = "..OPT:"
+--     for k,v in pairs(Scripter.savedVariables.chardata_sync_opt) do
+--         if v == true then
+-- 	    text = text .. "1 " .. k 
+--         else
+-- 	    text = text .. "0 " .. k 
+-- 	end
+--     end
+--     text = text .. "..\n"
 
+    local skip = false
     if (Scripter.GetCharacterSyncOption(displayName, OPT_SYNC_QUEST) and Scripter.savedVariables.usertime_sync_quest < stamp) then
+        local text = "Automatically generated by Scripter.\n\n"
         text = text .. Scripter.MSync_GetSyncTextInfo("QUE", Scripter.savedVariables.userdata_quest)
 	Scripter.savedVariables.usertime_sync_quest = stamp + (ONE_HOUR * 4)
-    elseif (Scripter.GetCharacterSyncOption(displayName, OPT_SYNC_SKILL) and Scripter.savedVariables.usertime_sync_skill < stamp) then
-        text = text .. Scripter.MSync_GetSyncTextInfo("SKI", Scripter.savedVariables.userdata_skill)
-	Scripter.savedVariables.usertime_sync_skill = stamp + (ONE_HOUR * 3)
-    elseif (Scripter.GetCharacterSyncOption(displayName, OPT_SYNC_ITEM) and Scripter.savedVariables.usertime_sync_item < stamp) then
-        text = text .. Scripter.MSync_GetSyncTextInfo("ITE", Scripter.savedVariables.userdata_item_worn)
-	Scripter.savedVariables.usertime_sync_item = stamp + (ONE_HOUR * 2)
-    elseif (Scripter.GetCharacterSyncOption(displayName, OPT_SYNC_CRAFT) and Scripter.savedVariables.usertime_sync_trait < stamp) then
-        text = text .. Scripter.MSync_GetSyncTextInfo("CRA", Scripter.savedVariables.userdata_trait)
-	Scripter.savedVariables.usertime_sync_item = stamp + ONE_HOUR
-    else
-        text = text .. Scripter.MSync_GetSyncTextInfo("ATT", Scripter.savedVariables.userdata_attr)
+	if isManual == false then skip = true end
+        RequestOpenMailbox()	
+        SendMail(displayName, "Scripter Automatic Synchronization", text)
+        Scripter.PrintDebug("MSync_SendEvent[QUE] displayName:" .. displayName .. " nextTime:" .. Scripter.FormatTime(GetTimeStamp() + 1200))
     end
 
-    RequestOpenMailbox()	
-    SendMail(displayName, "Scripter Automatic Synchronization", text)
-    Scripter.PrintDebug("MSync_SendEvent displayName:" .. displayName .. " nextTime:" .. Scripter.FormatTime(GetTimeStamp() + 1200))
+    if (skip == false and Scripter.GetCharacterSyncOption(displayName, OPT_SYNC_SKILL) and Scripter.savedVariables.usertime_sync_skill < stamp) then
+        local text = "Automatically generated by Scripter.\n\n"
+        text = text .. Scripter.MSync_GetSyncTextInfo("SKI", Scripter.savedVariables.userdata_skill)
+	Scripter.savedVariables.usertime_sync_skill = stamp + (ONE_HOUR * 3)
+	if isManual == false then skip = true end
+        RequestOpenMailbox()	
+        SendMail(displayName, "Scripter Automatic Synchronization", text)
+        Scripter.PrintDebug("MSync_SendEvent[SKI] displayName:" .. displayName .. " nextTime:" .. Scripter.FormatTime(GetTimeStamp() + 1200))
+    end
+
+    if (skip == false and Scripter.GetCharacterSyncOption(displayName, OPT_SYNC_ITEM) and Scripter.savedVariables.usertime_sync_item < stamp) then
+        local text = "Automatically generated by Scripter.\n\n"
+        text = text .. Scripter.MSync_GetSyncTextInfo("ITE", Scripter.savedVariables.userdata_item_worn)
+	Scripter.savedVariables.usertime_sync_item = stamp + (ONE_HOUR * 2)
+	if isManual == false then skip = true end
+        RequestOpenMailbox()	
+        SendMail(displayName, "Scripter Automatic Synchronization", text)
+        Scripter.PrintDebug("MSync_SendEvent[ITE] displayName:" .. displayName .. " nextTime:" .. Scripter.FormatTime(GetTimeStamp() + 1200))
+    end
+
+    if (skip == false and Scripter.GetCharacterSyncOption(displayName, OPT_SYNC_CRAFT) and Scripter.savedVariables.usertime_sync_trait < stamp) then
+        local text = "Automatically generated by Scripter.\n\n"
+        text = text .. Scripter.MSync_GetSyncTextInfo("CRA", Scripter.savedVariables.userdata_trait)
+	Scripter.savedVariables.usertime_sync_trait = stamp + ONE_HOUR
+	if isManual == false then skip = true end
+        RequestOpenMailbox()	
+        SendMail(displayName, "Scripter Automatic Synchronization", text)
+        Scripter.PrintDebug("MSync_SendEvent[CRA] displayName:" .. displayName .. " nextTime:" .. Scripter.FormatTime(GetTimeStamp() + 1200))
+    end
+
+    if skip == false then
+        local text = "Automatically generated by Scripter.\n\n"
+        text = text .. Scripter.MSync_GetSyncTextInfo("ATT", Scripter.savedVariables.userdata_attr)
+        RequestOpenMailbox()	
+        SendMail(displayName, "Scripter Automatic Synchronization", text)
+        Scripter.PrintDebug("MSync_SendEvent[ATT] displayName:" .. displayName .. " nextTime:" .. Scripter.FormatTime(GetTimeStamp() + 1200))
+    end
 end
 
 -- function Scripter.MSync_ResetEvent()
@@ -2964,7 +3098,7 @@ function Scripter.MSync_UpdateEvent()
     for k,v in pairs(Scripter.savedVariables.userdata_sync) do
         if now > v then
            if Scripter.IsAccountOnline(k) == true then
-               Scripter.MSync_SendEvent(k)
+               Scripter.MSync_SendEvent(k, false)
            end
            Scripter.savedVariables.userdata_sync[k] = now + 1200
         end
@@ -2988,8 +3122,7 @@ function Scripter.SyncAddUserCommand(argtext)
             if Settings:GetValue(OPT_SYNC) == true then
                 print("Scripter: Added user '" .. Scripter.HighlightText(displayName) .. " for synchronization.")
             else
--- todo: call multiple times based until up-to-date
-                Scripter.MSync_SendEvent(displayName)
+                Scripter.MSync_SendEvent(displayName, true)
                 print("Scripter: Sent synchronization to user '" .. Scripter.HighlightText(displayName) .. ".")
             end
 
@@ -3666,18 +3799,24 @@ function Scripter.NewExpEvent( eventCode, unitTag, currentExp, maxExp, reason )
     if exp ~= 0 then
     	local src = Scripter.GetReasonLabel(reason)
         local diff = currentExp - exp
-        local per = 100 / maxExp * currentExp
-        local per_str = string.format("%7.2f", per)
-        local slay_cnt = " - x" .. math.ceil((maxExp - currentExp) / diff) .. " to level"
-        if Settings:GetValue(OPT_NOTIFY_COMBAT) == true then
-            if isveteran == true then
-                Scripter.notifyAction("+" .. diff .. " VXP Points (" .. src .. ") " .. per_str .. "%" .. slay_cnt)
-            else
+
+	if diff > 0 then
+            local slay_cnt = ""
+	    if maxExp > currentExp then
                 local per = 100 / maxExp * currentExp
-                Scripter.notifyAction("+" .. diff .. " XP Points (" .. src .. ") " .. per_str .. "%" .. slay_cnt)
+                local per_str = string.format("%7.2f", per)
+                slay_cnt = per_str .. "% - x" .. math.ceil((maxExp - currentExp) / diff) .. " to level"
             end
+
+            if Settings:GetValue(OPT_NOTIFY_COMBAT) == true then
+                if isveteran == true then
+                    Scripter.notifyAction("+" .. diff .. " VXP Points (" .. src .. ") " .. slay_cnt)
+                else
+                    Scripter.notifyAction("+" .. diff .. " XP Points (" .. src .. ") " .. slay_cnt)
+                end
+            end
+            Scripter.addAbilityRate("Experience", diff)
         end
-        Scripter.addAbilityRate("Experience", diff)
     end
     if isveteran == true then
         current_vexp = currentExp 
@@ -4297,7 +4436,7 @@ EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_ADD_ON_LOADED, Scripter.OnAddOn
 
 -- Wykkyd framework macro integration
 if WF_SlashCommand ~= nil then
-    WF_SlashCommand("afk", Scripter.AFKCommand)
+    WF_SlashCommand("away", Scripter.AFKCommand)
     WF_SlashCommand("cmd", Scripter.CommandCommand)
     WF_SlashCommand("keybind", Scripter.KeybindCommand)
     WF_SlashCommand("filter", Scripter.FilterCommand)
@@ -4320,7 +4459,7 @@ if WF_SlashCommand ~= nil then
     WF_SlashCommand("timer", Scripter.TimerCommand)
     WF_SlashCommand("vendor", Scripter.VendorCommand)
 else
-    SLASH_COMMANDS["/afk"] = Scripter.AFKCommand
+    SLASH_COMMANDS["/away"] = Scripter.AFKCommand
     SLASH_COMMANDS["/cmd"] = Scripter.CommandCommand
     SLASH_COMMANDS["/keybind"] = Scripter.KeybindCommand
     SLASH_COMMANDS["/filter"] = Scripter.FilterCommand

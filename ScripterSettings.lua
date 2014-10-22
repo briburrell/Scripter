@@ -2,7 +2,6 @@ ScripterSettings = ZO_Object:Subclass()
 
 local LAM = LibStub("LibAddonMenu-2.0")
 
-OPT_AFK = "afk"
 OPT_AFK_ACTION = "afk_action"
 OPT_AUTOACCEPT = "autoaccept"
 OPT_AUTOBIND = "autobind"
@@ -10,6 +9,7 @@ OPT_DEBUG = "debug"
 OPT_FADEOUT = "fadeout"
 OPT_JUNKMODE = "junkmode"
 OPT_LOG_MAX = "log_max"
+OPT_CHAT_MAX = "chat_max"
 OPT_NOTIFY = "notify"
 OPT_NOTIFY_BOOK = "notify_book"
 OPT_NOTIFY_MONEY = "notify_money"
@@ -26,14 +26,14 @@ OPT_SYNC_CRAFT = "sync_craft"
 local settings = { }
 
 local default_settings = {
-    [OPT_AFK] = false,
-    [OPT_AFK_ACTION] = "sit",
+    [OPT_AFK_ACTION] = "<none>",
     [OPT_AUTOACCEPT] = true,
     [OPT_AUTOBIND] = true,
     [OPT_DEBUG] = false,
     [OPT_FADEOUT] = 15,
     [OPT_JUNKMODE] = true,
-    [OPT_LOG_MAX] = 15,
+    [OPT_LOG_MAX] = 40,
+    [OPT_CHAT_MAX] = 50,
     [OPT_NOTIFY] = true,
     [OPT_NOTIFY_BOOK] = true,
     [OPT_NOTIFY_MONEY] = true,
@@ -49,14 +49,14 @@ local default_settings = {
 }
 
 local settingsLabel = {
-    [OPT_AFK_ACTION] = "Enable AFK character mode.",
     [OPT_AFK_ACTION] = "Set AFK command action.",
     [OPT_AUTOACCEPT] = "Automatically accept invitations from friends.",
     [OPT_AUTOBIND] = "Automatic character bindings",
     [OPT_DEBUG] = "Display ongoing game events.",
     [OPT_FADEOUT] = "Number of seconds before notification window fades out.",
     [OPT_JUNKMODE] = "Enable persistent junk management.",
-    [OPT_LOG_MAX] = "Number of log lines to list.",
+    [OPT_LOG_MAX] = "Number of chat history lines to list.",
+    [OPT_CHAT_MAX] = "Number of log history lines to list.",
     [OPT_NOTIFY] = "Enable automatic text notification window.",
     [OPT_NOTIFY_BOOK] = "Enable automatic book notifications.",
     [OPT_NOTIFY_MONEY] = "Enable automatic monetary notifications.",
@@ -96,7 +96,7 @@ function ScripterSettings:CreateOptionsMenu()
     local optionsData = {
         [1] = {
             type = "header",
-            name = "Scripter Settings",
+            name = "Synchronization",
         },
         [2] = {
             type = "checkbox",
@@ -165,6 +165,10 @@ function ScripterSettings:CreateOptionsMenu()
             end
         },
         [8] = {
+            type = "header",
+            name = "Notifications",
+        },
+        [9] = {
             type = "checkbox",
             name = "Notification Window",
             tooltip = settingsLabel[OPT_NOTIFY],
@@ -175,7 +179,7 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_NOTIFY, value)
             end
         },
-        [9] = {
+        [10] = {
             type = "checkbox",
             name = "Book Notifications",
             tooltip = settingsLabel[OPT_NOTIFY_BOOK],
@@ -186,7 +190,7 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_NOTIFY_BOOK, value)
             end
         },
-        [10] = {
+        [11] = {
             type = "checkbox",
             name = "Money Notifications",
             tooltip = settingsLabel[OPT_NOTIFY_MONEY],
@@ -197,7 +201,7 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_NOTIFY_MONEY, value)
             end
         },
-        [11] = {
+        [12] = {
             type = "checkbox",
             name = "Inventory Notifications",
             tooltip = settingsLabel[OPT_NOTIFY_INVENTORY],
@@ -208,7 +212,7 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_NOTIFY_INVENTORY, value)
             end
         },
-        [12] = {
+        [13] = {
             type = "checkbox",
             name = "Combat Notifications",
             tooltip = settingsLabel[OPT_NOTIFY_COMBAT],
@@ -219,7 +223,7 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_NOTIFY_COMBAT, value)
             end
         },
-        [13] = {
+        [14] = {
             type = "checkbox",
             name = "Effect Notifications",
             tooltip = settingsLabel[OPT_NOTIFY_EFFECT],
@@ -230,7 +234,11 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_NOTIFY_EFFECT, value)
             end
         },
-        [14] = {
+        [15] = {
+            type = "header",
+            name = "Triggers",
+        },
+        [16] = {
             type = "checkbox",
             name = "Auto Accept Invite",
             tooltip = settingsLabel[OPT_AUTOACCEPT],
@@ -241,7 +249,7 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_AUTOACCEPT, value)
             end
         },
-        [15] = {
+        [17] = {
             type = "checkbox",
             name = "Automatic Keybindings",
             tooltip = settingsLabel[OPT_AUTOBIND],
@@ -252,7 +260,7 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_AUTOBIND, value)
             end
         },
-        [16] = {
+        [18] = {
             type = "checkbox",
             name = "Remember Junk Items",
             tooltip = settingsLabel[OPT_JUNKMODE],
@@ -263,9 +271,25 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_JUNKMODE, value)
             end
         },
-        [17] = {
+        [19] = {
+            type = "dropdown",
+            name = "AFK Action Command",
+	    choices = { "<none>", "bored", "dance", "faint", "goaway", "juggleflame", "kick", "laugh", "phew", "playdead", "sigh", "sit", "spit", "surprised", "tilt", "yawn", "wave", },
+            tooltip = settingsLabel[OPT_AFK_ACTION],
+            getFunc = function() 
+	    	return self:GetValue(OPT_AFK_ACTION)
+            end,
+            setFunc = function(value)
+                self:SetValue(OPT_AFK_ACTION, value)
+            end
+        },
+        [20] = {
+            type = "header",
+            name = "Character Log",
+        },
+        [21] = {
             type = "slider",
-            name = "Log Lines",
+            name = "Log History Lines",
 	    min = 1,
             max = 999,
             tooltip = settingsLabel[OPT_LOG_MAX],
@@ -276,7 +300,24 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_LOG_MAX, value)
             end
         },
-        [18] = {
+        [22] = {
+            type = "slider",
+            name = "Chat History Lines",
+	    min = 1,
+            max = 999,
+            tooltip = settingsLabel[OPT_CHAT_MAX],
+            getFunc = function() 
+	    	return self:GetValue(OPT_CHAT_MAX)
+            end,
+            setFunc = function(value)
+                self:SetValue(OPT_CHAT_MAX, value)
+            end
+        },
+        [23] = {
+            type = "header",
+            name = "Diagnostics",
+        },
+        [24] = {
             type = "checkbox",
             name = "Debug Mode",
             tooltip = settingsLabel[OPT_DEBUG],

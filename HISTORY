@@ -1,34 +1,44 @@
-Revisions:
-[10/05/2014] Bug: Gaining "VXP" now shows proper exp gained.
-[10/05/2014] New: XP/VXP gains show " - x<#> to level" where <#> is (xp-left-to-level / xp-gained).
-[10/06/2014] Moved "/shelp" to "/scripter"
-[10/06/2014] New: Added default aliases.
-[10/06/2014] New: /alias /clear
-[10/06/2014] New: /timer /delete
-[10/06/2014] New: /command [/clear] [/emote] [/scripter] [<kwd>]
-[10/06/2014] New: /command /desc <cmd> <kwd>
-[10/06/2014] New: /sconfig [afk] [combat] [effect] [inventory] [money]
-[10/06/2014] New: /sgroup [/invite] [/leave]
-[10/07/2014] New: /feedback <text>
-[10/07/2014] New: /eq [/all] [/pack] [/bank] 
-[10/08/2014] New: /score
-[10/08/2014] Renew: /timer
-[10/08/2014] Renew: /afk (toggle)
-[10/10/2014] New: /sconfig sync - toggle automatic sending of mail sync msgs
-[10/10/2014] New: /sconfig sync_mail - toggle whether to retain sync mail msgs
-[10/11/2014] New: /sync [/list] [/scan] <user>
-[10/11/2014] New: /score [/skill] [/userlist] <user>
-[10/11/2014] New: /quest <user>
-[10/11/2014] Renew: /eq [<user>]
-[10/11/2014] New: /score /userlist
-[10/11/2014] Fix: /cmd /desc <cmd> <desc>
-[10/13/2014] New: /research
-[10/13/2014] Renew: /sconfig
-[10/14/2014] New: /research [<item>]
+[10/21/2014] Release: v1.94 submitted
+[10/21/2014 #1090] New: In manual mode '/sync <user>' now sends all relevant mail notifications required for a complete update (per user configuration).
+[10/21/2014 #1105] Fix: /sync <user> throwing exception on notification send. 
+[10/21/2014 #549] New: /log /chat - shows recent chat history (configurable)
+[10/21/2014 #548] Renew: /away - incorporates in-game player status mode 
+                  Hint: use "/alias away afk" to remap to /afk 
+[10/21/2014 #550] Configurable AFK action commands ('/sconfig' or '/away /action <cmd>').
+[10/16/2014 #1097] Fix: Cosmetic XP notification fix.
+[10/16/2014 #1099] Fix: Cosmetic item obtained notification fix.
+[10/16/2014] Release: v1.93 submitted
+[10/16/2014 #1093] Fix: libaddon-2.0 compatibility with api 100010
+[10/16/2014] Release: v1.92 submitted
+[10/16/2014] Fix: new quest event exception
+[10/15/2014] Release: v1.91 submitted
+[10/15/2014] New: Added api version 10010 support.
 [10/14/2014] New: /stat /craft
+[10/14/2014] New: /research [<item>]
 [10/14/2014] New: Added load-balance to sync and included craft traits.
 [10/14/2014] Fix: /mail /purge
-[10/15/2014] New: Added api version 10010 support.
-[10/15/2014] Release: v1.91 submitted
-[10/16/2014] Fix: new quest event exception
-[10/16/2014] Release: v1.92 submitted
+[10/13/2014] Renew: /sconfig
+[10/13/2014] New: /research
+[10/11/2014] Renew: /eq [<user>]
+[10/11/2014] New: /sync [/list] [/scan] <user>
+[10/11/2014] New: /score /userlist
+[10/11/2014] New: /score [/skill] [/userlist] <user>
+[10/11/2014] New: /quest <user>
+[10/11/2014] Fix: /cmd /desc <cmd> <desc>
+[10/10/2014] New: /sconfig sync - toggle automatic sending of mail sync msgs
+[10/10/2014] New: /sconfig sync_mail - toggle whether to retain sync mail msgs
+[10/08/2014] Renew: /timer
+[10/08/2014] Renew: /afk (toggle)
+[10/08/2014] New: /score
+[10/07/2014] New: /feedback <text>
+[10/07/2014] New: /eq [/all] [/pack] [/bank]
+[10/06/2014] New: /timer /delete
+[10/06/2014] New: /sgroup [/invite] [/leave]
+[10/06/2014] New: /sconfig [afk] [combat] [effect] [inventory] [money]
+[10/06/2014] New: /command /desc <cmd> <kwd>
+[10/06/2014] New: /command [/clear] [/emote] [/scripter] [<kwd>]
+[10/06/2014] New: /alias /clear
+[10/06/2014] New: Added default aliases.
+[10/06/2014] Moved "/shelp" to "/scripter"
+[10/05/2014] New: XP/VXP gains show " - x<#> to level" where <#> is (xp-left-to-level / xp-gained).
+[10/05/2014] Bug: Gaining "VXP" now shows proper exp gained.
