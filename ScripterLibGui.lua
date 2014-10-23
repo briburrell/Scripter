@@ -19,7 +19,7 @@ ScripterLibGui = {
 		general = {
 			isMovable = true,
 			isHidden = false,
-			isBackgroundHidden = true,
+			isBackgroundHidden = false,
 			hideInDialogs = false,
 		},
 		anchor = {
@@ -40,10 +40,10 @@ ScripterLibGui = {
 			style = ""
 		},
 		minAlpha = 0,
-		maxAlpha = 0.8,
+		maxAlpha = 0.4,
 		fadeInDelay = 0,
-		fadeOutDelay = 7000,
-		fadeDuration = 700,
+		fadeOutDelay = 15000,
+		fadeDuration = 1500,
 		lineFadeTime = 5,
 		lineFadeDuration = 3,
 		timestamp = true,
@@ -310,7 +310,7 @@ end
 function ScripterLibGui.addMessage(message)
 	if ScripterLibGui.window.TEXTBUFFER ~= nil then	
 		if ScripterLibGui.isTimestampEnabled() then
-			ScripterLibGui.window.TEXTBUFFER:AddMessage("|c909000[" .. GetTimeString() .. "]|r " .. message)
+			ScripterLibGui.window.TEXTBUFFER:AddMessage("|caaaaaa[" .. GetTimeString() .. "]|r " .. message)
 		else
 			ScripterLibGui.window.TEXTBUFFER:AddMessage(message)
 		end

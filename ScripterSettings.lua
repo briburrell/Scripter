@@ -22,6 +22,8 @@ OPT_SYNC_DELETE = "sync_delete"
 OPT_SYNC_QUEST = "sync_quest"
 OPT_SYNC_SKILL = "sync_skill"
 OPT_SYNC_CRAFT = "sync_craft"
+OPT_CHAT_FONT = "chat_font"
+OPT_CHAT_FONT_SIZE = "chat_font_size"
 
 local settings = { }
 
@@ -29,6 +31,8 @@ local default_settings = {
     [OPT_AFK_ACTION] = "<none>",
     [OPT_AUTOACCEPT] = true,
     [OPT_AUTOBIND] = true,
+    [OPT_CHAT_FONT] = "Univers 57",
+    [OPT_CHAT_FONT_SIZE] = 14.5,
     [OPT_DEBUG] = false,
     [OPT_FADEOUT] = 15,
     [OPT_JUNKMODE] = true,
@@ -55,8 +59,10 @@ local settingsLabel = {
     [OPT_DEBUG] = "Display ongoing game events.",
     [OPT_FADEOUT] = "Number of seconds before notification window fades out.",
     [OPT_JUNKMODE] = "Enable persistent junk management.",
-    [OPT_LOG_MAX] = "Number of chat history lines to list.",
-    [OPT_CHAT_MAX] = "Number of log history lines to list.",
+    [OPT_LOG_MAX] = "Number of character log lines to list.",
+    [OPT_CHAT_FONT] = "The font to render text in the chat window.",
+    [OPT_CHAT_FONT_SIZE] = "The font size to display text in the chat window.",
+    [OPT_CHAT_MAX] = "Number of chat log lines to list.",
     [OPT_NOTIFY] = "Enable automatic text notification window.",
     [OPT_NOTIFY_BOOK] = "Enable automatic book notifications.",
     [OPT_NOTIFY_MONEY] = "Enable automatic monetary notifications.",
@@ -70,6 +76,36 @@ local settingsLabel = {
     [OPT_SYNC_QUEST] = "Enable receiving of character quest information.",
     [OPT_SYNC_SKILL] = "Enable receiving of character skill information.",
 }
+
+local fontFilePath = {
+    ["Arial Narrow"] = "EsoUI/Common/Fonts/arialn.ttf",
+    ["Consolas"] = "EsoUI/Common/Fonts/consola.ttf",
+    ["ESO Cartographer"] = "EsoUI/Common/Fonts/esocartographer-bold.otf",
+    ["Fontin Bold"] = "EsoUI/Common/Fonts/fontin_sans_b.otf",
+    ["Fontin Italic"] = "EsoUI/Common/Fonts/fontin_sans_i.otf",
+    ["Fontin Regular"] = "EsoUI/Common/Fonts/fontin_sans_r.otf",
+    ["Fontin SmallCaps"] = "EsoUI/Common/Fonts/fontin_sans_sc.otf",
+    ["Futura Condensed"] = "EsoUI/Common/Fonts/futurastd-condensed.otf",
+    ["Futura Light"] = "EsoUI/Common/Fonts/futurastd-condensedlight.otf",
+    ["ProseAntique"] = "EsoUI/Common/Fonts/ProseAntiquePSMT.otf",
+    ["Skyrim Handwritten"] = "EsoUI/Common/Fonts/Handwritten_Bold.otf",
+    ["Trajan Pro"] = "EsoUI/Common/Fonts/trajanpro-regular.otf",
+    ["Univers 55"] = "EsoUI/Common/Fonts/univers55.otf",
+    ["Univers 57"] = "EsoUI/Common/Fonts/univers57.otf",
+    ["Univers 67"] = "EsoUI/Common/Fonts/univers67.otf",
+}
+
+function ScripterSettings:GetFontNames()
+    local names = {}
+    for k, v in pairs(fontFilePath) do
+        table.insert(names, k)
+    end
+    return names
+end
+
+function ScripterSettings:GetFont(name)
+    return fontFilePath[name]
+end
 
 function ScripterSettings:GetValue(name)
     return settings[name]
@@ -291,7 +327,7 @@ function ScripterSettings:CreateOptionsMenu()
             type = "slider",
             name = "Log History Lines",
 	    min = 1,
-            max = 999,
+            max = 500,
             tooltip = settingsLabel[OPT_LOG_MAX],
             getFunc = function() 
 	    	return self:GetValue(OPT_LOG_MAX)
@@ -301,10 +337,14 @@ function ScripterSettings:CreateOptionsMenu()
             end
         },
         [22] = {
+            type = "header",
+            name = "Chat Window",
+        },
+        [23] = {
             type = "slider",
             name = "Chat History Lines",
 	    min = 1,
-            max = 999,
+            max = 500,
             tooltip = settingsLabel[OPT_CHAT_MAX],
             getFunc = function() 
 	    	return self:GetValue(OPT_CHAT_MAX)
@@ -313,11 +353,36 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_CHAT_MAX, value)
             end
         },
-        [23] = {
+--        [24] = {
+--            type = "dropdown",
+--            name = "Chat Window Text Font",
+--            tooltip = settingsLabel[OPT_CHAT_FONT],
+--	    choices = self:GetFontNames(),
+--            getFunc = function() 
+--	    	return self:GetValue(OPT_CHAT_FONT)
+--            end,
+--            setFunc = function(value)
+--                self:SetValue(OPT_CHAT_FONT, value)
+--            end
+--        },
+--        [25] = {
+--            type = "slider",
+--            name = "Chat Window Font Size",
+--	    min = 6,
+--            max = 24,
+--            tooltip = settingsLabel[OPT_CHAT_FONT_SIZE],
+--            getFunc = function() 
+--	    	return self:GetValue(OPT_CHAT_FONT_SIZE)
+--            end,
+--            setFunc = function(value)
+--                self:SetValue(OPT_CHAT_FONT_SIZE, value)
+--            end
+--        },
+        [24] = {
             type = "header",
             name = "Diagnostics",
         },
-        [24] = {
+        [25] = {
             type = "checkbox",
             name = "Debug Mode",
             tooltip = settingsLabel[OPT_DEBUG],

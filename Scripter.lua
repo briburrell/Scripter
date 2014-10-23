@@ -6,7 +6,7 @@ Scripter = {}
 local Scripter = Scripter
 local ScripterSL = ZO_Object:Subclass()
 local Settings
-local scripterVersion = 1.95
+local scripterVersion = 1.96
 
 -- Localize builtin functions we use 
 local ipairs = ipairs
@@ -20,6 +20,7 @@ local current_vexp = 0
 local victim = "unknown"
 local scripterCraftEvent = false
 local afk_index = 1
+local NativeChannelEvent = nil
 
 -- constant definitions
 local S_NAME = "Name"
@@ -157,9 +158,36 @@ Scripter.defaults = {
     ["chardata_rating"] = {}, 
     ["chardata_skill"] = {}, 
     ["chardata_sync"] = {}, 
+    ["chardata_sync_read"] = {}, 
     ["chardata_sync_opt"] = {},
     ["chardata_trait"] = {},
 }
+
+local fontType = {
+    ["Arial Narrow"] = "EsoUI/Common/Fonts/arialn.ttf",
+    ["Consolas"] = "EsoUI/Common/Fonts/consola.ttf",
+    ["ESO Cartographer"] = "EsoUI/Common/Fonts/esocartographer-bold.otf",
+    ["Fontin Bold"] = "EsoUI/Common/Fonts/fontin_sans_b.otf",
+    ["Fontin Italic"] = "EsoUI/Common/Fonts/fontin_sans_i.otf",
+    ["Fontin Regular"] = "EsoUI/Common/Fonts/fontin_sans_r.otf",
+    ["Fontin SmallCaps"] = "EsoUI/Common/Fonts/fontin_sans_sc.otf",
+    ["Futura Condensed"] = "EsoUI/Common/Fonts/futurastd-condensed.otf",
+    ["Futura Light"] = "EsoUI/Common/Fonts/futurastd-condensedlight.otf",
+    ["ProseAntique"] = "EsoUI/Common/Fonts/ProseAntiquePSMT.otf",
+    ["Skyrim Handwritten"] = "EsoUI/Common/Fonts/Handwritten_Bold.otf",
+    ["Trajan Pro"] = "EsoUI/Common/Fonts/trajanpro-regular.otf",
+    ["Univers 55"] = "EsoUI/Common/Fonts/univers55.otf",
+    ["Univers 57"] = "EsoUI/Common/Fonts/univers57.otf",
+    ["Univers 67"] = "EsoUI/Common/Fonts/univers67.otf",
+}
+
+function Scripter.GetFontNames()
+    return Settings:GetFontNames()
+end
+
+function Scripter.GetFont(name)
+    return Settings:GetFont(name)
+end
 
 local itemEquipType = {
     ["Costume"] = EQUIP_TYPE_COSTUME,
@@ -717,22 +745,18 @@ function Scripter.FormatTime(time)
 end
 
 function Scripter.isPlayerAfk()
-    if GetPlayerStatus() == PLAYER_STATUS_AWAY then
+    if (GetPlayerStatus() == PLAYER_STATUS_AWAY or GetPlayerStatus() == PLAYER_STATUS_DO_NOT_DISTURB) then
         return true;
     end
     return false;
 end
 
-function Scripter.setPlayerAfk(isAfk)
-    if isAfk == true then
-        SelectPlayerStatus(PLAYER_STATUS_AWAY);
-    else
-        SelectPlayerStatus(PLAYER_STATUS_ONLINE);
-    end
+function Scripter.setPlayerAfk(status)
+    SelectPlayerStatus(status)
 end
 
 function Scripter.ResetAfkMode()
-    Scripter.setPlayerAfk(false);
+    Scripter.setPlayerAfk(PLAYER_STATUS_ONLINE)
     Scripter.savedVariables.usertime_afk = 0
 end
 
@@ -767,26 +791,20 @@ function Scripter.AFKSleep()
 end
 
 function Scripter.PreEventCheck()
-    Scripter.AFKWake()
+    if GetPlayerStatus() == PLAYER_STATUS_AWAY then
+        Scripter.AFKWake()
+    end
 end
 
 function Scripter.PreCommandCheck()
-    Scripter.AFKWake()
+    if GetPlayerStatus() == PLAYER_STATUS_AWAY then
+        Scripter.AFKWake()
+    end
 end
 
 function Scripter.ChannelFilter(eventType, messageType, fromName, text)
     if text == nil then return false end
-    if type(text) ~= "string" then return end
---     if (messageType ~= CHAT_CHANNEL_WHISPER and messageType ~= 4) then
---         return false
---     end
---     if string.match(text, "^\.\.:") == nil then
---         return false
---     end
--- 
---     NewSyncChannelEvent(fromName, text)
---     return true
-
+    if type(text) ~= "string" then return false end
 
     for k,v in pairs(Scripter.savedVariables.userdata_filter) do
         if string.match(text, k) ~= nil then
@@ -847,6 +865,8 @@ local channelType = {
     ["whisper"] = CHAT_CHANNEL_WHISPER,
     ["party"] = CHAT_CHANNEL_PARTY,
     ["monster"] = CHAT_CHANNEL_MONSTER_SAY,
+    ["monster emote"] = CHAT_CHANNEL_MONSTER_EMOTE,
+    ["monster whisper"] = CHAT_CHANNEL_MONSTER_WHISPER,
     ["emote"] = CHAT_CHANNEL_EMOTE,
     ["yell"] = CHAT_CHANNEL_YELL,
     ["say"] = CHAT_CHANNEL_SAY,
@@ -855,7 +875,13 @@ local channelType = {
     ["guild3"] = CHAT_CHANNEL_GUILD_3,
     ["guild4"] = CHAT_CHANNEL_GUILD_4,
     ["guild5"] = CHAT_CHANNEL_GUILD_5,
-    ["zone"] = CHAT_CHANNEL_ZONE_LANGUAGE_1,
+    ["zone"] = CHAT_CHANNEL_ZONE,
+    ["zone1"] = CHAT_CHANNEL_ZONE_LANGUAGE_1,
+    ["zone2"] = CHAT_CHANNEL_ZONE_LANGUAGE_2,
+    ["zone3"] = CHAT_CHANNEL_ZONE_LANGUAGE_3,
+    ["officer1"] = CHAT_CHANNEL_OFFICER_1,
+    ["officer2"] = CHAT_CHANNEL_OFFICER_2,
+    ["officer3"] = CHAT_CHANNEL_OFFICER_3,
     ["sys"] = CHAT_CHANNEL_SYSTEM,
 }
 
@@ -870,8 +896,9 @@ function Scripter.GetChannelType(messageType)
 end
 
 function Scripter.StoreChannelText(eventType, messageType, fromName, text)
+    if (text == nil or type(text) ~= "string" or text == "") then return end
     if messageType == CHAT_CHANNEL_SYSTEM then return end 
-    if text == "" then return end
+
     local cType = Scripter.GetChannelType(messageType)
     if cType == "unknown" then return end
 
@@ -898,17 +925,20 @@ function Scripter.StoreChannelText(eventType, messageType, fromName, text)
     end
 end
 
-local NativeChannelEvent = nil
 function Scripter.ChannelFilterEvent(control, ...)
-    if NativeChannelEvent == nil then
-        return
-    end
     if Scripter.ChannelFilter(...) then
         return
     end
 
-    NativeChannelEvent(control, ...)
     Scripter.StoreChannelText(...)
+
+    if NativeChannelEvent == nil then
+        return
+    end
+
+    if GetPlayerStatus() ~= PLAYER_STATUS_DO_NOT_DISTURB then
+        NativeChannelEvent(control, ...)
+    end
 end
 
 function NewSyncChannelEvent(sender, message)
@@ -948,23 +978,11 @@ function Scripter.FormatItemName(name)
 --     return name
 end
 
--- function Scripter.NewChannelEvent(eventCode, messageType, sender, message)
---    if (Scripter.FormatItemName(sender) == GetUnitName('player') or Scripter.FormatItemName(sender) == GetDisplayName()) then
---        Scripter.PreEventCheck()
---    end
-
---     if (messageType ~= CHAT_CHANNEL_WHISPER and messageType ~= 4) then
---         return
---     end
--- 	if string.match(message, "^\.\.:") == nil then
--- 	    return
--- 	end
-
---	if Scripter.savedVariables.userdata_sync[sender] == nil then
---        return
---	end
-
--- end
+function Scripter.NewChannelEvent(eventCode, messageType, sender, message)
+    if sender == GetRawUnitName("player") then
+        Scripter.PreEventCheck()
+    end
+end
 
 function Scripter.GetZoneAndSubzone(alternative)
    if alternative then
@@ -1322,9 +1340,11 @@ function Scripter.NewItemEvent(eventId, bagId, slotId, isNewItem, itemSoundCateg
     Scripter.PreEventCheck()
     Scripter.PrintDebug("NewItemEvent eventId:" .. eventId .. " bagId:" .. bagId .. " updateReason:" .. updateReason)
 
-    local item = Scripter.GetPlayerItemInfo(bagId, slotId)
-    if item ~= nil then
-        Scripter.StoreInventoryItem(item)
+    if bagId == BAG_WORN then
+        local item = Scripter.GetPlayerItemInfo(bagId, slotId)
+        if item ~= nil then
+            Scripter.StoreInventoryItem(item)
+        end
     end
 
     if updateReason ~= INVENTORY_UPDATE_REASON_DURABILITY_CHANGE then
@@ -1490,6 +1510,10 @@ function Scripter.StorePlayerStatInfo()
     end
 end
 
+function Scripter.GetPlayerStatusLabel(playerStatus)
+    return GetString("SI_PLAYERSTATUS", playerStatus)
+end
+
 function Scripter.GetFriendText(id)
     local displayName, note, playerStatus, secsSinceLogoff = GetFriendInfo(id)
     local hasCharacter, characterName, zoneName, classType, allianceType, level, veteranRank = GetFriendCharacterInfo(id)
@@ -1502,18 +1526,22 @@ function Scripter.GetFriendText(id)
     end
 
     characterName = Scripter.ResolveCharacterName(characterName)
-    Scripter.SetCharacterAttribute(characterName, S_LEVEL, level_str)
-    Scripter.SetCharacterAttribute(characterName, S_CLASS, class_str)
-    Scripter.SetCharacterAttribute(characterName, S_ALLIANCE, alliance_str)
+    if playerStatus == 1 then	
+        Scripter.SetCharacterAttribute(characterName, S_LEVEL, level_str)
+        Scripter.SetCharacterAttribute(characterName, S_CLASS, class_str)
+        Scripter.SetCharacterAttribute(characterName, S_ALLIANCE, alliance_str)
+    end
     
     local timeSinceLogoff = nil
-    if (playerStatus ~= 1 and secsSinceLogoff > 0) then
+    if (playerStatus == PLAYER_STATUS_OFFLINE and secsSinceLogoff > 0) then
         timeSinceLogoff = Scripter.FormatSecondsToDDHHMMSS(secsSinceLogoff)
     end
     
     text = "Lv " .. level_str .. " " .. alliance_str .. " " .. class_str .. " " .. Scripter.HighlightText(characterName) .. " (" .. displayName .. ") in " .. zoneName
     if secsSinceLogoff > 0 then
         text = text .. " (Logoff: " .. timeSinceLogoff .. ")"
+    else
+        text = text .. " (" .. Scripter.GetPlayerStatusLabel(playerStatus) .. ")"
     end
 
     return text
@@ -1609,11 +1637,12 @@ function Scripter.NewMailEvent(eventCode, mailId)
     if (numAttachments ~= nil and numAttachments > 0) then return end
 
     senderName = Scripter.ResolveCharacterName(senderName)
-    Scripter.PrintDebug("NewMailEvent senderAccount:" .. senderAccount .. " senderName:" .. senderName .. " nextTime:" .. Scripter.FormatTime(GetTimeStamp() + 60))
+    Scripter.PrintDebug("NewMailEvent senderAccount:" .. senderAccount .. " senderName:" .. senderName .. " secs:" .. secs)
 
     local stamp = GetTimeStamp() - secs;
-    local last_stamp = Scripter.savedVariables.chardata_sync[senderName]
+    local last_stamp = Scripter.savedVariables.chardata_sync_read[senderName]
     if last_stamp == nil then last_stamp = 0 end
+    last_stamp = last_stamp - 5
 
     if Subject == "Scripter Automatic Synchronization" then
         if (stamp > last_stamp and Scripter.savedVariables.userdata_sync[senderAccount] ~= nil) then
@@ -1622,14 +1651,16 @@ function Scripter.NewMailEvent(eventCode, mailId)
 
             Scripter.MSync_ParseMailEvent(senderName, body)
 
-	    Scripter.notifyAction("Received synchronization from '" .. Scripter.HighlightText(senderName) .. " (" .. senderAccount .. "'.")
+	    Scripter.notifyAction("Received synchronization from '" .. Scripter.HighlightText(senderName) .. " (" .. senderAccount .. ")'.")
+	    Scripter.savedVariables.chardata_sync_read[senderName] = GetTimeStamp()
         end
 
         if Settings:GetValue(OPT_SYNC_DELETE) == true then
             -- do not retain sync mails
-            RequestOpenMailbox()
+--            RequestOpenMailbox()
             ReadMail(mailId) -- mark as read
             DeleteMail(mailId, false)
+--	    CloseMailbox()
         end
     end
 end
@@ -1675,6 +1706,11 @@ function Scripter.NewMovementEvent(eventCode)
     Scripter.PreEventCheck()
 end
 
+function Scripter.NewPlayerStatusEvent(eventCode, _, playerStatus)
+    Scripter.PrintDebug("NewPlayerStatusEvent playerStatus:" .. playerStatus)
+    Scripter.notifyAction("Character mode transitioned to '" .. Scripter.HighlightText(Scripter.GetPlayerStatusLabel(playerStatus)) .. "'.")
+end
+
 function Scripter.NewTraitEvent(eventCode, itemName, itemTrait)
     if (itemName == nil or itemTrait == nil) then return end
     Scripter.PrintDebug("NewTraitEvent eventCode:" .. eventCode .. " itemName:" .. itemName .. " itemTrait:" .. itemTrait)
@@ -1689,7 +1725,7 @@ function Scripter.RegisterEvents()
     EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_LORE_BOOK_LEARNED, Scripter.NewLoreBookEvent)
 
     -- Chat Events
---    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_CHAT_MESSAGE_CHANNEL, Scripter.NewChannelEvent)
+    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_CHAT_MESSAGE_CHANNEL, Scripter.NewChannelEvent)
 
     -- Keybind Events
     EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_KEYBINDINGS_LOADED, Scripter.OnKeybindingsLoaded)
@@ -1728,6 +1764,8 @@ function Scripter.RegisterEvents()
 
     -- UI Events
     EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_NEW_MOVEMENT_IN_UI_MODE, Scripter.NewMovementEvent)
+--    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_GAME_CAMERA_UI_MODE_CHANGED, Scripter.NewMovementEvent)
+    EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_PLAYER_STATUS_CHANGED, Scripter.NewPlayerStatusEvent)
 
     -- Vendor Events
     EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_OPEN_STORE, Scripter.NewVendorEvent)
@@ -1761,8 +1799,10 @@ function Scripter.ResearchSlashCommandHelp()
 --    print("- /research <item>  |cff8f41  Research a item in the backpack.")
 end
 function Scripter.AFKSlashCommandHelp()
-    print("- /away  |cff8f41  Toggle character's AFK mode.")
+    print("- /away  |cff8f41  Toggle character's \"Away From Keyboard\" mode.")
     print("- /away /action <cmd>  |cff8f41  Set the action to perform while in AFK mode.")
+    print("- /away /quiet  |cff8f41  Toggle character's \"Do Not Disturb\" mode.")
+    print("  note: The \"Do Not Disturb\" mode suppresses all incoming chat message.")
 end
 
 function Scripter.FormatDate(time)
@@ -1816,11 +1856,11 @@ end
 
 function Scripter.AFKToggleCommand(argtext)
     if Scripter.isPlayerAfk() == false then
-        Scripter.setPlayerAfk(true);
+        Scripter.setPlayerAfk(PLAYER_STATUS_AWAY)
 	print("Scripter: Character AFK mode enabled.")
 	Scripter.AFKSleep()
     else
-        Scripter.setPlayerAfk(false);
+        Scripter.setPlayerAfk(PLAYER_STATUS_ONLINE)
 	print("Scripter: Character AFK mode disabled.")
 	Scripter.AFKWake()
     end
@@ -2955,7 +2995,7 @@ end
 
 -- list users configured to sync with
 function Scripter.SyncListCommand()
-    print("Sync users:")
+    print("Sync accounts:");
     for k,v in pairs(Scripter.savedVariables.userdata_sync) do
         if Settings:GetValue(OPT_SYNC) == false then
             print("- " .. k)
@@ -3028,8 +3068,9 @@ function Scripter.MSync_SendEvent(displayName, isManual)
         text = text .. Scripter.MSync_GetSyncTextInfo("QUE", Scripter.savedVariables.userdata_quest)
 	Scripter.savedVariables.usertime_sync_quest = stamp + (ONE_HOUR * 4)
 	if isManual == false then skip = true end
-        RequestOpenMailbox()	
+--        RequestOpenMailbox()	
         SendMail(displayName, "Scripter Automatic Synchronization", text)
+--	CloseMailbox()
         Scripter.PrintDebug("MSync_SendEvent[QUE] displayName:" .. displayName .. " nextTime:" .. Scripter.FormatTime(GetTimeStamp() + 1200))
     end
 
@@ -3038,8 +3079,9 @@ function Scripter.MSync_SendEvent(displayName, isManual)
         text = text .. Scripter.MSync_GetSyncTextInfo("SKI", Scripter.savedVariables.userdata_skill)
 	Scripter.savedVariables.usertime_sync_skill = stamp + (ONE_HOUR * 3)
 	if isManual == false then skip = true end
-        RequestOpenMailbox()	
+--        RequestOpenMailbox()	
         SendMail(displayName, "Scripter Automatic Synchronization", text)
+--	CloseMailbox()
         Scripter.PrintDebug("MSync_SendEvent[SKI] displayName:" .. displayName .. " nextTime:" .. Scripter.FormatTime(GetTimeStamp() + 1200))
     end
 
@@ -3048,8 +3090,9 @@ function Scripter.MSync_SendEvent(displayName, isManual)
         text = text .. Scripter.MSync_GetSyncTextInfo("ITE", Scripter.savedVariables.userdata_item_worn)
 	Scripter.savedVariables.usertime_sync_item = stamp + (ONE_HOUR * 2)
 	if isManual == false then skip = true end
-        RequestOpenMailbox()	
+--        RequestOpenMailbox()	
         SendMail(displayName, "Scripter Automatic Synchronization", text)
+--	CloseMailbox()
         Scripter.PrintDebug("MSync_SendEvent[ITE] displayName:" .. displayName .. " nextTime:" .. Scripter.FormatTime(GetTimeStamp() + 1200))
     end
 
@@ -3058,16 +3101,18 @@ function Scripter.MSync_SendEvent(displayName, isManual)
         text = text .. Scripter.MSync_GetSyncTextInfo("CRA", Scripter.savedVariables.userdata_trait)
 	Scripter.savedVariables.usertime_sync_trait = stamp + ONE_HOUR
 	if isManual == false then skip = true end
-        RequestOpenMailbox()	
+--        RequestOpenMailbox()	
         SendMail(displayName, "Scripter Automatic Synchronization", text)
+--	CloseMailbox()
         Scripter.PrintDebug("MSync_SendEvent[CRA] displayName:" .. displayName .. " nextTime:" .. Scripter.FormatTime(GetTimeStamp() + 1200))
     end
 
     if skip == false then
         local text = "Automatically generated by Scripter.\n\n"
         text = text .. Scripter.MSync_GetSyncTextInfo("ATT", Scripter.savedVariables.userdata_attr)
-        RequestOpenMailbox()	
+--        RequestOpenMailbox()	
         SendMail(displayName, "Scripter Automatic Synchronization", text)
+--	CloseMailbox()
         Scripter.PrintDebug("MSync_SendEvent[ATT] displayName:" .. displayName .. " nextTime:" .. Scripter.FormatTime(GetTimeStamp() + 1200))
     end
 end
@@ -3162,7 +3207,7 @@ end
 
 function Scripter.SyncListInfoCommand(argtext)
     if (argtext == nil or argtext == "") then
-        print("Sync history:")
+        print("Sync character history:")
         for k,v in pairs(Scripter.savedVariables.chardata_sync) do
             print("- " .. k .. " (" .. Scripter.FormatDate(v) .. ")")
         end
@@ -3178,7 +3223,7 @@ end
 function Scripter.SyncScanCommand(argtext)
     print("Scripter: Scanning mail for sync notifications.")
 
-    RequestOpenMailbox()	
+--    RequestOpenMailbox()	
     local mailId = nil
     local numMail = GetNumMailItems()
     for m = 1, numMail, 1 do
@@ -3190,6 +3235,7 @@ function Scripter.SyncScanCommand(argtext)
 	    Scripter.MSync_ParseMailEvent(senderName, data)
         end
     end
+--    CloseMailbox()
 end
 
 Scripter.syncCommands = {
@@ -3389,7 +3435,9 @@ end
 
 function Scripter.GetInventoryItem(bagId, slotId)
     local item = Scripter.GetPlayerItemInfo(bagId, slotId)
-    Scripter.StoreInventoryItem(item)
+    if bagId == BAG_WORN then
+        Scripter.StoreInventoryItem(item)
+    end
     return item
 end
 
@@ -3543,8 +3591,21 @@ function Scripter.CommandListCommand(textarg)
     end
 end
 
+function Scripter.AFKQuietCommand()
+    if Scripter.isPlayerAfk() == false then
+        Scripter.setPlayerAfk(PLAYER_STATUS_DO_NOT_DISTURB)
+	print("Scripter: Character AFK (Quiet) mode enabled.")
+	Scripter.AFKSleep()
+    else
+        Scripter.setPlayerAfk(PLAYER_STATUS_ONLINE)
+	print("Scripter: Character AFK mode disabled.")
+	Scripter.AFKWake()
+    end
+end
+
 Scripter.afkCommands = {
     ["/action"] = Scripter.AFKActionCommand,
+    ["/quiet"] = Scripter.AFKQuietCommand,
 }
 
 function Scripter.ScripterCommandsCommand(argtext)
@@ -4052,6 +4113,10 @@ function Scripter.UpdateMoneyEvent()
 end
 
 function Scripter.UpdateTask()
+    if (GetPlayerStatus() == PLAYER_STATUS_AWAY and IsPlayerMoving() == true) then
+        Scripter.AFKWake()
+    end
+
     Scripter.FireTimers()
     Scripter.UpdateMoneyEvent()
 
@@ -4066,6 +4131,40 @@ function Scripter.UpdateTask()
     zo_callLater(Scripter.UpdateTask, 1500)
 end
 
+function Scripter.RefreshPlayerInventory()
+   Scripter.savedVariables.userdata_item_worn = {}
+   local max = GetBagSize(BAG_WORN)
+   for slotId = 0, max do
+       local item = Scripter.GetInventoryItem(BAG_WORN, slotId)
+   end
+end
+
+function Scripter.InitializeChatWindowFont()
+    -- set the default CHAT window font size. 
+    local font_type = Settings:GetValue(OPT_CHAT_FONT)
+    local font_size = Settings:GetValue(OPT_CHAT_FONT_SIZE)
+    -- chat history list
+    ZO_ChatWindowAgentChat:SetFont(string.format( "%s|%d|%s", 
+        Scripter.GetFont(font_type), font_size, "soft-shadow-thin")); 
+    -- entry textfield
+    font_size = font_size - 0.5
+    ZO_ChatWindowTextEntryEditBox:SetFont(string.format( "%s|%d|%s", 
+        Scripter.GetFont(font_type), font_size, "soft-shadow-thin")); 
+    font_size = font_size - 0.5
+    ZO_ChatWindowTextEntryLabel:SetFont(string.format( "%s|%d|%s",
+        Scripter.GetFont(font_type), font_size, "soft-shadow-thin")); 
+end
+
+function Scripter.InitializeChatWindow()
+    -- allow chat to be resized to full-screen dimensions.
+    CHAT_SYSTEM.maxContainerWidth, CHAT_SYSTEM.maxContainerHeight = GuiRoot:GetDimensions()
+
+-- cant find control for flip'n chat history
+--    Scripter.InitializeChatWindowFont()
+
+    NativeChannelEvent = CHAT_SYSTEM.OnChatEvent
+    CHAT_SYSTEM.OnChatEvent = Scripter.ChannelFilterEvent
+end
 
 function Scripter.OnAddOnLoaded(event, addonName)
     if addonName ~= "Scripter" then return end
@@ -4075,10 +4174,9 @@ function Scripter.OnAddOnLoaded(event, addonName)
     ScripterLibGui.initializeSavedVariable()		
     ScripterLibGui.CreateWindow()						
 
-    NativeChannelEvent = CHAT_SYSTEM.OnChatEvent
-    CHAT_SYSTEM.OnChatEvent = Scripter.ChannelFilterEvent
-    
     Scripter.savedVariables = ZO_SavedVars:NewAccountWide("Scripter_SavedVariables", 1, "default", Scripter.defaults)
+
+    Scripter.InitializeChatWindow();
 
     -- Silently load the active bind set, if automatic mode is on.
     Scripter.LoadAutomaticBindings(true)
@@ -4093,7 +4191,7 @@ function Scripter.OnAddOnLoaded(event, addonName)
     Scripter.savedVariables.usertemp_mail = {}
 
     -- clear previously established 'item worn' list.
-    Scripter.savedVariables.userdata_item_worn = {}
+    Scripter.RefreshPlayerInventory()
 
     for k,v in pairs(Scripter.savedVariables.userdata_alias_v3) do
 	Scripter.Alias_DoCommandInClosure(k,v)
@@ -4123,8 +4221,8 @@ function Scripter.SubmitCommand(text)
         return
     end
 
-    RequestOpenMailbox()	
-    SendMail("@mahnki", "Scripter: Bug/Enhancement Feedback", text)
+--    RequestOpenMailbox()	
+    SendMail("@mahnki", "Scripter: Bug/Enhancement Feedback (v" .. scripterVersion .. ")", text)
 
 -- The following fills in the mail message, but does not bring up the Mailbox window
 --    ZO_MailSendToField:SetText("@mahnki") 
@@ -4157,7 +4255,7 @@ function Scripter.PrintMailMessageSummary(mailId)
 end
 
 function Scripter.ListMailCommand(argtext)
-    RequestOpenMailbox()
+--    RequestOpenMailbox()
     print ("Mail:")
     local numMail = GetNumMailItems()
     local mailId = nil
@@ -4179,7 +4277,7 @@ function Scripter.DeleteMailCommand(argtext)
         return
     end
 
-    RequestOpenMailbox()
+--    RequestOpenMailbox()
     ReadMail(mailId) -- mark as read
     DeleteMail(mailId, false)
     Scripter.savedVariables.usertemp_mail[argtext] = nil
@@ -4216,7 +4314,7 @@ function Scripter.PurgeMailCommand(argtext)
         local mailId = k
         local senderAccount, senderName, Subject, Icon, unread, fromSystem, fromCustomerService, isReturned, numAttachments, num2, num3, daysLeft, someNumber = GetMailItemInfo(mailId)
         if (fromSystem == false and fromCustomerService == false and isReturned == false and numAttachments == 0) then 
-            RequestOpenMailbox()
+--            RequestOpenMailbox()
             ReadMail(mailId) -- mark as read
             DeleteMail(mailId, false)
             print ("Scripter: Deleted mail message '" .. Scripter.HighlightText(Subject) .. "'.")
@@ -4269,9 +4367,11 @@ function Scripter.GetGuildMemberText(guildId, memberId)
     end
 
     characterName = Scripter.ResolveCharacterName(characterName)
-    Scripter.SetCharacterAttribute(characterName, S_CLASS, class_str)
-    Scripter.SetCharacterAttribute(characterName, S_ALLIANCE, alliance_str)
-    Scripter.SetCharacterAttribute(characterName, S_LEVEL, level_str)
+
+--    too spammy (bug #1091)
+--    Scripter.SetCharacterAttribute(characterName, S_CLASS, class_str)
+--    Scripter.SetCharacterAttribute(characterName, S_ALLIANCE, alliance_str)
+--    Scripter.SetCharacterAttribute(characterName, S_LEVEL, level_str)
 
     text = "- " .. characterName .. " (Lv " .. level_str .. " "
     if alliance_str ~= "Unknown" then

@@ -1,3 +1,8 @@
+[10/22/2014] Release: v1.96 submitted
+[10/22/2014 #548] New: /away /quiet - enables 'do not disturb' mode & suppresses incoming chat messages
+[10/22/2014 #548] Renew: AFK mode now disables upon character movement or chat
+[10/22/2014 #1091] Renew: /stat /userlist - only base online friend info added without sync
+[10/22/2014 #1096] /feedback now supplies addon version in subject
 [10/21/2014] Release: v1.95 submitted
 [10/21/2014 #1106] Fix: Party invite throwing exception.
 [10/21/2014] Release: v1.94 submitted
