@@ -5,8 +5,9 @@ if Scripter then return end
 Scripter = {}
 local Scripter = Scripter
 local ScripterSL = ZO_Object:Subclass()
-local Settings
-local scripterVersion = 1.96
+Settings = nil
+local scripterVersion = 1.99
+local authorName = "@mahnki"
 
 -- Localize builtin functions we use 
 local ipairs = ipairs
@@ -161,24 +162,6 @@ Scripter.defaults = {
     ["chardata_sync_read"] = {}, 
     ["chardata_sync_opt"] = {},
     ["chardata_trait"] = {},
-}
-
-local fontType = {
-    ["Arial Narrow"] = "EsoUI/Common/Fonts/arialn.ttf",
-    ["Consolas"] = "EsoUI/Common/Fonts/consola.ttf",
-    ["ESO Cartographer"] = "EsoUI/Common/Fonts/esocartographer-bold.otf",
-    ["Fontin Bold"] = "EsoUI/Common/Fonts/fontin_sans_b.otf",
-    ["Fontin Italic"] = "EsoUI/Common/Fonts/fontin_sans_i.otf",
-    ["Fontin Regular"] = "EsoUI/Common/Fonts/fontin_sans_r.otf",
-    ["Fontin SmallCaps"] = "EsoUI/Common/Fonts/fontin_sans_sc.otf",
-    ["Futura Condensed"] = "EsoUI/Common/Fonts/futurastd-condensed.otf",
-    ["Futura Light"] = "EsoUI/Common/Fonts/futurastd-condensedlight.otf",
-    ["ProseAntique"] = "EsoUI/Common/Fonts/ProseAntiquePSMT.otf",
-    ["Skyrim Handwritten"] = "EsoUI/Common/Fonts/Handwritten_Bold.otf",
-    ["Trajan Pro"] = "EsoUI/Common/Fonts/trajanpro-regular.otf",
-    ["Univers 55"] = "EsoUI/Common/Fonts/univers55.otf",
-    ["Univers 57"] = "EsoUI/Common/Fonts/univers57.otf",
-    ["Univers 67"] = "EsoUI/Common/Fonts/univers67.otf",
 }
 
 function Scripter.GetFontNames()
@@ -936,7 +919,7 @@ function Scripter.ChannelFilterEvent(control, ...)
         return
     end
 
-    if GetPlayerStatus() ~= PLAYER_STATUS_DO_NOT_DISTURB then
+    if (GetPlayerStatus() ~= PLAYER_STATUS_DO_NOT_DISTURB or Settings:GetValue(OPT_CHAT_SUPPRESS) == false) then
         NativeChannelEvent(control, ...)
     end
 end
@@ -1629,8 +1612,34 @@ function Scripter.MSync_ParseMailEvent(name, text)
     Scripter.savedVariables.chardata_sync[name] = GetTimeStamp()
 end
 
+-- ToggleShowIngameGui()
+function Scripter.SendGameMail(accountName, subject, text)
+--    RequestOpenMailbox()
+    SendMail(accountName, subject, text)
+--    ClearQueuedMail()
+--    CloseMailbox()
+end
+
+function Scripter.ReadGameMail(mailId)
+    local body
+
+--    RequestOpenMailbox()
+--    RequestReadMail(mailId)
+    body = ReadMail(mailId)
+--    CloseMailbox()
+
+    return body
+end
+
+function Scripter.DeleteGameMail(mailId)
+--    RequestOpenMailbox()
+    local body = ReadMail(mailId)
+    DeleteMail(mailId, false)
+--    CloseMailbox()
+end
+
 function Scripter.NewMailEvent(eventCode, mailId)
-    local senderAccount, senderName, Subject, Icon, unread, fromSystem, fromCustomerService, isReturned, numAttachments, num2, num3, daysLeft, secs = GetMailItemInfo( mailId )
+    local senderAccount, senderName, Subject, Icon, unread, fromSystem, fromCustomerService, isReturned, numAttachments, attachedMoney, codAmount, daysLeft, secs = GetMailItemInfo( mailId )
     if fromSystem == true then return end
     if fromCustomerService == true then return end
     if isReturned == true then return end
@@ -1656,11 +1665,9 @@ function Scripter.NewMailEvent(eventCode, mailId)
         end
 
         if Settings:GetValue(OPT_SYNC_DELETE) == true then
-            -- do not retain sync mails
---            RequestOpenMailbox()
-            ReadMail(mailId) -- mark as read
-            DeleteMail(mailId, false)
---	    CloseMailbox()
+            Scripter.DeleteGameMail(mailId)
+--            ReadMail(mailId) -- mark as read
+ --           DeleteMail(mailId, false)
         end
     end
 end
@@ -2050,7 +2057,9 @@ function Scripter.MailSlashCommandHelp()
 end
 function Scripter.FilterSlashCommandHelp()
     print("- /filter  |cff8f41  Print all current chat filters.")
-    print("- /filter <text>  |cff8f41  Add a new chat text filter.");
+    print("- /filter <text>  |cff8f41  Add a new chat filter keyword.");
+    print("- /filter /clear  |cff8f41  Clear all filter keywords.")
+    print("- /filter /delete <text>  |cff8f41  Delete a chat filter keyword.");
 end
 
 function Scripter.ScreenshotSlashCommandHelp()
@@ -2192,13 +2201,46 @@ function Scripter.ListFilterCommand()
     end
 end
 
+function Scripter.FilterClearCommand(argtext)
+    Scripter.savedVariables.userdata_filter = {}
+    print("Scripter: Cleared all filter keywords.")
+end
+
+function Scripter.FilterDeleteCommand(argtext)
+    if (argtext == nil or argtext == "") then
+        Scripter.FilterSlashCommandHelp()
+        return
+    end
+
+    if Scripter.savedVariables.userdata_filter[argtext] == nil then
+        print("Scripter: Filter keyword '" .. Scripter.HighlightText(argtext) .. "' does not exist.")
+        return
+    end
+
+    Scripter.savedVariables.userdata_filter[argtext] = nil
+    print ("Scripter: Filter '" .. Scripter.HighlightText(argtext) .. "' deleted.")
+end
+
+Scripter.filterCommands = {
+    ["/clear"] = Scripter.FilterClearCommand,
+    ["/delete"] = Scripter.FilterDeleteCommand,
+}
+
 function Scripter.FilterCommand(argtext)
     if (argtext == nil or argtext == "") then
         Scripter.ListFilterCommand()
         return
     end
-   
-    Scripter.savedVariables.userdata_filter[argtext] = ""
+
+    local args = {strsplit(" ", argtext)}
+    local fcommand = Scripter.filterCommands[args[1]]
+    if not fcommand then
+        Scripter.savedVariables.userdata_filter[argtext] = ""
+        print ("Scripter: Filter '" .. Scripter.HighlightText(argtext) .. "' added.")
+        return
+    end
+
+    fcommand(Scripter.extractstr(args,2));
 end
 
 function Scripter.Alias_DoCommandInClosure(alias, cmd)
@@ -2623,7 +2665,7 @@ function Scripter.ScoreListBuffCommand(argtext)
 end
 
 function Scripter.GetPlayerSkills()
-    local skills = {
+    skills = {
         ["Alchemy"] = GetSkillLineXPInfo(8,1),
         ["Blacksmithing"] = GetSkillLineXPInfo(8,2),
         ["Clothing"] = GetSkillLineXPInfo(8,3),
@@ -2649,6 +2691,14 @@ function Scripter.GetPlayerSkills()
         ["Class Tree 2"] = GetSkillLineXPInfo(1,2),
         ["Class Tree 3"] = GetSkillLineXPInfo(1,3),
     }
+
+    Scripter.savedVariables.userdata_skill = {}
+    for k,v in pairs(skills) do
+        if v ~= 0 then
+            Scripter.savedVariables.userdata_skill[k] = v
+        end
+    end
+
     return skills
 end
 
@@ -3068,20 +3118,19 @@ function Scripter.MSync_SendEvent(displayName, isManual)
         text = text .. Scripter.MSync_GetSyncTextInfo("QUE", Scripter.savedVariables.userdata_quest)
 	Scripter.savedVariables.usertime_sync_quest = stamp + (ONE_HOUR * 4)
 	if isManual == false then skip = true end
---        RequestOpenMailbox()	
-        SendMail(displayName, "Scripter Automatic Synchronization", text)
---	CloseMailbox()
+        Scripter.SendGameMail(displayName, "Scripter Automatic Synchronization", text)
+--        SendMail(displayName, "Scripter Automatic Synchronization", text)
         Scripter.PrintDebug("MSync_SendEvent[QUE] displayName:" .. displayName .. " nextTime:" .. Scripter.FormatTime(GetTimeStamp() + 1200))
     end
 
     if (skip == false and Scripter.GetCharacterSyncOption(displayName, OPT_SYNC_SKILL) and Scripter.savedVariables.usertime_sync_skill < stamp) then
+        local skills = Scripter.GetPlayerSkills() -- refresh vars 
         local text = "Automatically generated by Scripter.\n\n"
         text = text .. Scripter.MSync_GetSyncTextInfo("SKI", Scripter.savedVariables.userdata_skill)
 	Scripter.savedVariables.usertime_sync_skill = stamp + (ONE_HOUR * 3)
 	if isManual == false then skip = true end
---        RequestOpenMailbox()	
-        SendMail(displayName, "Scripter Automatic Synchronization", text)
---	CloseMailbox()
+        Scripter.SendGameMail(displayName, "Scripter Automatic Synchronization", text)
+--        SendMail(displayName, "Scripter Automatic Synchronization", text)
         Scripter.PrintDebug("MSync_SendEvent[SKI] displayName:" .. displayName .. " nextTime:" .. Scripter.FormatTime(GetTimeStamp() + 1200))
     end
 
@@ -3090,9 +3139,8 @@ function Scripter.MSync_SendEvent(displayName, isManual)
         text = text .. Scripter.MSync_GetSyncTextInfo("ITE", Scripter.savedVariables.userdata_item_worn)
 	Scripter.savedVariables.usertime_sync_item = stamp + (ONE_HOUR * 2)
 	if isManual == false then skip = true end
---        RequestOpenMailbox()	
-        SendMail(displayName, "Scripter Automatic Synchronization", text)
---	CloseMailbox()
+        Scripter.SendGameMail(displayName, "Scripter Automatic Synchronization", text)
+--        SendMail(displayName, "Scripter Automatic Synchronization", text)
         Scripter.PrintDebug("MSync_SendEvent[ITE] displayName:" .. displayName .. " nextTime:" .. Scripter.FormatTime(GetTimeStamp() + 1200))
     end
 
@@ -3101,18 +3149,16 @@ function Scripter.MSync_SendEvent(displayName, isManual)
         text = text .. Scripter.MSync_GetSyncTextInfo("CRA", Scripter.savedVariables.userdata_trait)
 	Scripter.savedVariables.usertime_sync_trait = stamp + ONE_HOUR
 	if isManual == false then skip = true end
---        RequestOpenMailbox()	
-        SendMail(displayName, "Scripter Automatic Synchronization", text)
---	CloseMailbox()
+        Scripter.SendGameMail(displayName, "Scripter Automatic Synchronization", text)
+--        SendMail(displayName, "Scripter Automatic Synchronization", text)
         Scripter.PrintDebug("MSync_SendEvent[CRA] displayName:" .. displayName .. " nextTime:" .. Scripter.FormatTime(GetTimeStamp() + 1200))
     end
 
     if skip == false then
         local text = "Automatically generated by Scripter.\n\n"
         text = text .. Scripter.MSync_GetSyncTextInfo("ATT", Scripter.savedVariables.userdata_attr)
---        RequestOpenMailbox()	
-        SendMail(displayName, "Scripter Automatic Synchronization", text)
---	CloseMailbox()
+        Scripter.SendGameMail(displayName, "Scripter Automatic Synchronization", text)
+--        SendMail(displayName, "Scripter Automatic Synchronization", text)
         Scripter.PrintDebug("MSync_SendEvent[ATT] displayName:" .. displayName .. " nextTime:" .. Scripter.FormatTime(GetTimeStamp() + 1200))
     end
 end
@@ -3223,7 +3269,6 @@ end
 function Scripter.SyncScanCommand(argtext)
     print("Scripter: Scanning mail for sync notifications.")
 
---    RequestOpenMailbox()	
     local mailId = nil
     local numMail = GetNumMailItems()
     for m = 1, numMail, 1 do
@@ -3231,11 +3276,11 @@ function Scripter.SyncScanCommand(argtext)
 
         local senderAccount, senderName, Subject = GetMailItemInfo(mailId)
         if Subject == "Scripter Automatic Synchronization" then
-            local data = ReadMail(mailId)
+            local data = Scripter.ReadGameMail(mailId)
+--            local data = ReadMail(mailId)
 	    Scripter.MSync_ParseMailEvent(senderName, data)
         end
     end
---    CloseMailbox()
 end
 
 Scripter.syncCommands = {
@@ -4221,14 +4266,8 @@ function Scripter.SubmitCommand(text)
         return
     end
 
---    RequestOpenMailbox()	
-    SendMail("@mahnki", "Scripter: Bug/Enhancement Feedback (v" .. scripterVersion .. ")", text)
-
--- The following fills in the mail message, but does not bring up the Mailbox window
---    ZO_MailSendToField:SetText("@mahnki") 
---    ZO_MailSendSubjectField:SetText("Bug Report / Enhancement Request")
---    ZO_MailSendBodyField:SetText("")
---    ZO_MailSendBodyField:TakeFocus()
+    Scripter.SendGameMail(authorName, "Scripter: Bug/Enhancement Feedback (v" .. scripterVersion .. ")", text)
+--    SendMail("@mahnki", "Scripter: Bug/Enhancement Feedback (v" .. scripterVersion .. ")", text)
 end
 
 function Scripter.GetMailId(id)
@@ -4239,24 +4278,45 @@ function Scripter.GetMailId(id)
 end
 
 function Scripter.SendMailCommand(argtext)
-    Scripter.UnimplementedCommand()
+    local args = {strsplit(" ", argtext)}
+    local accountName = args[1]
+    local text = Scripter.extractstr(args,2)
+    local tbuf = Scripter.FormatDate(GetTimeStamp()) 
+
+    if (accountName == nil or text == nil) then
+        Scripter.MailSlashCommandHelp()
+        return
+    end
+    
+    Scripter.SendGameMail(accountName, tbuf, text)
+    print("Submitted mail message to '" .. Scripter.HighlightText(accountName) .. "'.")
 end
 
 function Scripter.PrintMailMessageSummary(mailId)
     local senderAccount, senderName, Subject, Icon, unread, fromSystem, fromCustomerService, isReturned, numAttachments, num2, num3, daysLeft, secs = GetMailItemInfo( mailId )
 
-    local body = ReadMail(mailId)
-
     local id = (GetTimeStamp() - secs) % 100000
     if id < 0 then id = id * -1 end
     Scripter.savedVariables.usertemp_mail[id] = mailId
 
-    print ("[#" .. id .. " " .. senderName .. " (" .. senderAccount .. ")] " .. string.sub(Subject, 0, 48))
+    local text = "[#" .. id .. " " .. senderName .. senderAccount .. "] " .. string.sub(Subject, 0, 48)
+    if unread then
+        text = "* " .. text
+    else
+        text = "  " .. text
+    end
+    print(text)
 end
 
 function Scripter.ListMailCommand(argtext)
---    RequestOpenMailbox()
-    print ("Mail:")
+    local unread = GetNumUnreadMail()
+
+    if unread > 0 then
+        print ("Mail (" .. unread .. " unread):")
+    else
+        print ("Mail:")
+    end
+
     local numMail = GetNumMailItems()
     local mailId = nil
     for m = 1, numMail, 1 do
@@ -4277,9 +4337,9 @@ function Scripter.DeleteMailCommand(argtext)
         return
     end
 
---    RequestOpenMailbox()
-    ReadMail(mailId) -- mark as read
-    DeleteMail(mailId, false)
+    Scripter.DeleteGameMail(mailId, false)
+--    ReadMail(mailId) -- mark as read
+--    DeleteMail(mailId, false)
     Scripter.savedVariables.usertemp_mail[argtext] = nil
     print ("Scripter: Deleted mail message #" .. argtext .. ".")
 end
@@ -4297,7 +4357,13 @@ function Scripter.ReadMailCommand(argtext)
     end
 
     Scripter.PrintMailMessageSummary(mailId)
-    print (ReadMail(mailId))
+    local body = Scripter.ReadGameMail(mailId)
+    if body == "" then
+        print("Scripter: Message contents not available.");
+    else
+        print(body)
+    end
+--    print (ReadMail(mailId))
 end
 
 function Scripter.PurgeMailCommand(argtext)
@@ -4314,9 +4380,9 @@ function Scripter.PurgeMailCommand(argtext)
         local mailId = k
         local senderAccount, senderName, Subject, Icon, unread, fromSystem, fromCustomerService, isReturned, numAttachments, num2, num3, daysLeft, someNumber = GetMailItemInfo(mailId)
         if (fromSystem == false and fromCustomerService == false and isReturned == false and numAttachments == 0) then 
---            RequestOpenMailbox()
-            ReadMail(mailId) -- mark as read
-            DeleteMail(mailId, false)
+            Scripter.DeleteGameMail(mailId)
+--            ReadMail(mailId) -- mark as read
+--            DeleteMail(mailId, false)
             print ("Scripter: Deleted mail message '" .. Scripter.HighlightText(Subject) .. "'.")
         end
     end

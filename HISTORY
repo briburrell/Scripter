@@ -1,3 +1,13 @@
+[10/24/2014] Release: v1.99 submitted
+[10/24/2014] Fix: Skills are now properly synchronized.
+[10/24/2014] Release: v1.98 submitted
+[10/24/2014] Fix: resolved an outgoing mail issue
+[10/24/2014] Release: v1.97 submitted
+[10/24/2014 #1108] New: /filter /clear & /filter /delete <text>
+[10/24/2014 #552] New: /mail <user> <text> - send a mail message
+[10/24/2014 #1113] Fix: unsheath weapon after Scripter mail send
+[10/24/2014 #1110] New: Configuration: Notification window font.
+[10/23/2014 #551] New: Configuration: Notify window buffer, bg, fade-out time.
 [10/22/2014] Release: v1.96 submitted
 [10/22/2014 #548] New: /away /quiet - enables 'do not disturb' mode & suppresses incoming chat messages
 [10/22/2014 #548] Renew: AFK mode now disables upon character movement or chat

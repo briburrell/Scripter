@@ -19,7 +19,7 @@ ScripterLibGui = {
 		general = {
 			isMovable = true,
 			isHidden = false,
-			isBackgroundHidden = false,
+			--isBackgroundHidden = false,
 			hideInDialogs = false,
 		},
 		anchor = {
@@ -33,16 +33,15 @@ ScripterLibGui = {
 			width = 540,
 			height = 264
 		},
-		font = {
-			name = "EsoUI/Common/Fonts/univers57.otf", 
-		--	LMP:HashTable("font")["Univers 57"],
-			height = "14",
-			style = ""
-		},
+--		font = {
+--			name = "EsoUI/Common/Fonts/univers57.otf", 
+--			height = "14",
+--			style = ""
+--		},
 		minAlpha = 0,
 		maxAlpha = 0.4,
 		fadeInDelay = 0,
-		fadeOutDelay = 15000,
+		--fadeOutDelay = 15000,
 		fadeDuration = 1500,
 		lineFadeTime = 5,
 		lineFadeDuration = 3,
@@ -51,17 +50,27 @@ ScripterLibGui = {
 	fadeOutCheckOnUpdate = nil
 }
 
+-- retained persistent dimensions
 local savedVars_ScripterLibGui = {}
+
+function ScripterLibGui.setBufferMax()
+    ScripterLibGui.window.TEXTBUFFER:SetMaxHistoryLines(Settings:GetValue(OPT_NOTIFY_MAX))
+end
+
+function ScripterLibGui.setTextFont()
+    ScripterLibGui.window.TEXTBUFFER:SetFont(Settings:GetFont(Settings:GetValue(OPT_NOTIFY_FONT)) .. "|" .. Settings:GetValue(OPT_NOTIFY_FONT_SIZE) .. "|")
+end
 
 function ScripterLibGui.CreateWindow( )
 	if ScripterLibGui.window.ID == nil then
 		ScripterLibGui.window.ID = WINDOW_MANAGER:CreateTopLevelWindow("ScripterLG_TLW")
-		ScripterLibGui.window.ID:SetAlpha(savedVars_ScripterlibGui.maxAlpha)
+		ScripterLibGui.window.ID:SetAlpha(savedVars_ScripterLibGui.maxAlpha)
 		ScripterLibGui.window.ID:SetMouseEnabled(true)		
-		ScripterLibGui.window.ID:SetMovable( savedVars_ScripterlibGui.general.isMovable )
+		ScripterLibGui.window.ID:SetMovable( savedVars_ScripterLibGui.general.isMovable )
 		ScripterLibGui.window.ID:SetClampedToScreen(true)
-		ScripterLibGui.window.ID:SetDimensions( savedVars_ScripterlibGui.dimensions.width, savedVars_ScripterlibGui.dimensions.height )
-		if savedVars_ScripterlibGui.general.isBackgroundHidden then
+		ScripterLibGui.window.ID:SetDimensions( savedVars_ScripterLibGui.dimensions.width, savedVars_ScripterLibGui.dimensions.height )
+		--if savedVars_ScripterLibGui.general.isBackgroundHidden then
+		if Settings:GetValue(OPT_NOTIFY_BG) == false then
 			ScripterLibGui.window.ID:SetResizeHandleSize(0)
 		else
 			ScripterLibGui.window.ID:SetResizeHandleSize(8)
@@ -70,24 +79,28 @@ function ScripterLibGui.CreateWindow( )
 		ScripterLibGui.window.ID:SetDrawLayer(DL_BACKGROUND)
 		ScripterLibGui.window.ID:SetDrawTier(DT_LOW)
 		ScripterLibGui.window.ID:SetAnchor(
-			savedVars_ScripterlibGui.anchor.point, 
-			savedVars_ScripterlibGui.anchor.relativeTo, 
-			savedVars_ScripterlibGui.anchor.relativePoint, 
-			savedVars_ScripterlibGui.anchor.xPos, 
-			savedVars_ScripterlibGui.anchor.yPos )	
+			savedVars_ScripterLibGui.anchor.point, 
+			savedVars_ScripterLibGui.anchor.relativeTo, 
+			savedVars_ScripterLibGui.anchor.relativePoint, 
+			savedVars_ScripterLibGui.anchor.xPos, 
+			savedVars_ScripterLibGui.anchor.yPos )	
 
-		ScripterLibGui.window.ID:SetHidden(savedVars_ScripterlibGui.general.isHidden)
+		ScripterLibGui.window.ID:SetHidden(savedVars_ScripterLibGui.general.isHidden)
 
 		ScripterLibGui.window.ID.isResizing = false		
 				
 		ScripterLibGui.window.TEXTBUFFER = WINDOW_MANAGER:CreateControl(nil, ScripterLibGui.window.ID, CT_TEXTBUFFER)	
 		ScripterLibGui.window.TEXTBUFFER:SetLinkEnabled(true)
 		ScripterLibGui.window.TEXTBUFFER:SetMouseEnabled(true)
-		ScripterLibGui.window.TEXTBUFFER:SetFont(savedVars_ScripterlibGui.font.name.."|"..savedVars_ScripterlibGui.font.height.."|"..savedVars_ScripterlibGui.font.style)
+
+                ScripterLibGui.setTextFont()
+--		ScripterLibGui.window.TEXTBUFFER:SetFont(savedVars_ScripterLibGui.font.name.."|"..savedVars_ScripterLibGui.font.height.."|"..savedVars_ScripterLibGui.font.style)
+
 		ScripterLibGui.window.TEXTBUFFER:SetClearBufferAfterFadeout(false)
-		ScripterLibGui.window.TEXTBUFFER:SetLineFade(savedVars_ScripterlibGui.lineFadeTime, savedVars_ScripterlibGui.lineFadeDuration)
-		ScripterLibGui.window.TEXTBUFFER:SetMaxHistoryLines(100)
-		ScripterLibGui.window.TEXTBUFFER:SetDimensions(savedVars_ScripterlibGui.dimensions.width-64, savedVars_ScripterlibGui.dimensions.height-64)
+		--ScripterLibGui.window.TEXTBUFFER:SetLineFade(savedVars_ScripterLibGui.lineFadeTime, savedVars_ScripterLibGui.lineFadeDuration)
+		ScripterLibGui.window.TEXTBUFFER:SetLineFade(Settings:GetValue(OPT_NOTIFY_FADE_DELAY), savedVars_ScripterLibGui.lineFadeDuration)
+		ScripterLibGui.setBufferMax()
+		ScripterLibGui.window.TEXTBUFFER:SetDimensions(savedVars_ScripterLibGui.dimensions.width-64, savedVars_ScripterLibGui.dimensions.height-64)
 		ScripterLibGui.window.TEXTBUFFER:SetAnchor(TOPLEFT,ScripterLibGui.window.ID,TOPLEFT,32,32)
 	
 		ScripterLibGui.window.BACKDROP = WINDOW_MANAGER:CreateControl(nil, ScripterLibGui.window.ID, CT_BACKDROP)
@@ -95,9 +108,14 @@ function ScripterLibGui.CreateWindow( )
 		ScripterLibGui.window.BACKDROP:SetEdgeTexture([[/esoui/art/chatwindow/chat_bg_edge.dds]], 32, 32, 32, 0)
 		ScripterLibGui.window.BACKDROP:SetInsets(32,32,-32,-32)	
 		ScripterLibGui.window.BACKDROP:SetAnchorFill(ScripterLibGui.window.ID)
-		ScripterLibGui.window.BACKDROP:SetHidden(savedVars_ScripterlibGui.general.isBackgroundHidden)
+		--ScripterLibGui.window.BACKDROP:SetHidden(savedVars_ScripterLibGui.general.isBackgroundHidden)
+		if Settings:GetValue(OPT_NOTIFY_BG) == true then
+		    ScripterLibGui.window.BACKDROP:SetHidden(false)
+                else
+		    ScripterLibGui.window.BACKDROP:SetHidden(true)
+                end
 	
-		if not savedVars_ScripterlibGui.general.isMovable then
+		if not savedVars_ScripterLibGui.general.isMovable then
 			ScripterLibGui.FadeOut()
 		end
 
@@ -123,26 +141,26 @@ function ScripterLibGui.CreateWindow( )
 		end )
 
 		ScripterLibGui.window.ID:SetHandler( "OnResizeStop" , function(self, ...) 
-			savedVars_ScripterlibGui.dimensions.width, savedVars_ScripterlibGui.dimensions.height = self:GetDimensions()
-			ScripterLibGui.window.TEXTBUFFER:SetDimensions(savedVars_ScripterlibGui.dimensions.width-64, savedVars_ScripterlibGui.dimensions.height-64)
+			savedVars_ScripterLibGui.dimensions.width, savedVars_ScripterLibGui.dimensions.height = self:GetDimensions()
+			ScripterLibGui.window.TEXTBUFFER:SetDimensions(savedVars_ScripterLibGui.dimensions.width-64, savedVars_ScripterLibGui.dimensions.height-64)
 			self.isResizing = false
 		end )
 
 		ScripterLibGui.window.ID:SetHandler( "OnMoveStop" , function(self, ...) 
 			local isValidAnchor, point, relativeTo, relativePoint, offsetX, offsetY = ScripterLibGui.window.ID:GetAnchor()
 			if isValidAnchor then
-				savedVars_ScripterlibGui.anchor.point = point
-				savedVars_ScripterlibGui.anchor.relativeTo = relativeTo
-				savedVars_ScripterlibGui.anchor.relativePoint = relativePoint
-				savedVars_ScripterlibGui.anchor.xPos = offsetX
-				savedVars_ScripterlibGui.anchor.yPos = offsetY
+				savedVars_ScripterLibGui.anchor.point = point
+				savedVars_ScripterLibGui.anchor.relativeTo = relativeTo
+				savedVars_ScripterLibGui.anchor.relativePoint = relativePoint
+				savedVars_ScripterLibGui.anchor.xPos = offsetX
+				savedVars_ScripterLibGui.anchor.yPos = offsetY
 				ScripterLibGui.window.ID:ClearAnchors()
 				ScripterLibGui.window.ID:SetAnchor(
-					savedVars_ScripterlibGui.anchor.point, 
-					savedVars_ScripterlibGui.anchor.relativeTo, 
-					savedVars_ScripterlibGui.anchor.relativePoint, 
-					savedVars_ScripterlibGui.anchor.xPos, 
-					savedVars_ScripterlibGui.anchor.yPos )
+					savedVars_ScripterLibGui.anchor.point, 
+					savedVars_ScripterLibGui.anchor.relativeTo, 
+					savedVars_ScripterLibGui.anchor.relativePoint, 
+					savedVars_ScripterLibGui.anchor.xPos, 
+					savedVars_ScripterLibGui.anchor.yPos )
 			end
 		end )
 		
@@ -156,7 +174,7 @@ function ScripterLibGui.CreateWindow( )
 		--local fragment = ZO_FadeSceneFragment:New( ScripterLibGui.window.ID )
 		local fragment = ZO_SimpleSceneFragment:New( ScripterLibGui.window.ID )
 
-		if not savedVars_ScripterlibGui.general.isHidden and savedVars_ScripterlibGui.general.hideInDialogs then
+		if not savedVars_ScripterLibGui.general.isHidden and savedVars_ScripterLibGui.general.hideInDialogs then
 			SCENE_MANAGER:GetScene('hud'):AddFragment( fragment )	
 			SCENE_MANAGER:GetScene('hudui'):AddFragment( fragment )
 		end
@@ -164,22 +182,23 @@ function ScripterLibGui.CreateWindow( )
 end
 
 function ScripterLibGui.FadeOut()
-	if not savedVars_ScripterlibGui.general.isBackgroundHidden then
+	if Settings:GetValue(OPT_NOTIFY_BG) then
 		if not ScripterLibGui.window.BACKDROP.fadeAnim then
 			ScripterLibGui.window.BACKDROP.fadeAnim = ZO_AlphaAnimation:New(ScripterLibGui.window.BACKDROP)
 		end
-		ScripterLibGui.window.BACKDROP.fadeAnim:SetMinMaxAlpha(savedVars_ScripterlibGui.minAlpha, savedVars_ScripterlibGui.maxAlpha)
-		ScripterLibGui.window.BACKDROP.fadeAnim:FadeOut(savedVars_ScripterlibGui.fadeOutDelay, savedVars_ScripterlibGui.fadeDuration)
+		ScripterLibGui.window.BACKDROP.fadeAnim:SetMinMaxAlpha(savedVars_ScripterLibGui.minAlpha, savedVars_ScripterLibGui.maxAlpha)
+		--ScripterLibGui.window.BACKDROP.fadeAnim:FadeOut(savedVars_ScripterLibGui.fadeOutDelay, savedVars_ScripterLibGui.fadeDuration)
+		ScripterLibGui.window.BACKDROP.fadeAnim:FadeOut(Settings:GetValue(OPT_NOTIFY_FADE_DELAY), savedVars_ScripterLibGui.fadeDuration)
 	end
 end
 
 function ScripterLibGui.FadeIn()
-	if not savedVars_ScripterlibGui.general.isBackgroundHidden then
+    if Settings:GetValue(OPT_NOTIFY_BG) == true then
        	if not ScripterLibGui.window.BACKDROP.fadeAnim then
        		ScripterLibGui.window.BACKDROP.fadeAnim = ZO_AlphaAnimation:New(ScripterLibGui.window.BACKDROP)
        	end
-		ScripterLibGui.window.BACKDROP.fadeAnim:SetMinMaxAlpha(savedVars_ScripterlibGui.minAlpha, savedVars_ScripterlibGui.maxAlpha)
-    	ScripterLibGui.window.BACKDROP.fadeAnim:FadeIn(savedVars_ScripterlibGui.fadeInDelay, savedVars_ScripterlibGui.fadeDuration)
+		ScripterLibGui.window.BACKDROP.fadeAnim:SetMinMaxAlpha(savedVars_ScripterLibGui.minAlpha, savedVars_ScripterLibGui.maxAlpha)
+    	ScripterLibGui.window.BACKDROP.fadeAnim:FadeIn(savedVars_ScripterLibGui.fadeInDelay * 1000, savedVars_ScripterLibGui.fadeDuration)
     end
 end
 
@@ -206,105 +225,79 @@ function ScripterLibGui.MonitorForMouseExit()
 end
 
 function ScripterLibGui.setMovable(value)
-	savedVars_ScripterlibGui.general.isMovable = value
+	savedVars_ScripterLibGui.general.isMovable = value
 	ScripterLibGui.window.ID:SetMovable(value)
 end
 
 function ScripterLibGui.getTimeTillLineFade()
-	return savedVars_ScripterlibGui.lineFadeTime
+	return savedVars_ScripterLibGui.lineFadeTime
 end
 
 function ScripterLibGui.setTimeTillLineFade(value)
-	savedVars_ScripterlibGui.lineFadeTime = value
-	ScripterLibGui.window.TEXTBUFFER:SetLineFade(savedVars_ScripterlibGui.lineFadeTime, savedVars_ScripterlibGui.lineFadeDuration)
+	savedVars_ScripterLibGui.lineFadeTime = value
+	ScripterLibGui.window.TEXTBUFFER:SetLineFade(savedVars_ScripterLibGui.lineFadeTime, savedVars_ScripterLibGui.lineFadeDuration)
 end
 
 function ScripterLibGui.setBackgroundHidden(value)
-	savedVars_ScripterlibGui.general.isBackgroundHidden = value
+--	savedVars_ScripterLibGui.general.isBackgroundHidden = value
 	ScripterLibGui.window.BACKDROP:SetHidden(value)
-	if savedVars_ScripterlibGui.general.isBackgroundHidden then
+	--if savedVars_ScripterLibGui.general.isBackgroundHidden then
+	if Settings:GetValue(OPT_NOTIFY_BG) == false then
 		ScripterLibGui.window.ID:SetResizeHandleSize(0)
 	else
 		ScripterLibGui.window.ID:SetResizeHandleSize(8)
 	end
 end
 
-function ScripterLibGui.isBackgroundHidden()
-	return savedVars_ScripterlibGui.general.isBackgroundHidden
+function ScripterLibGui.setFadeDelay(value)
+--    ScripterLibGui.window.BACKDROP.fadeAnim:FadeOut(value, 1500)
+    ScripterLibGui.window.TEXTBUFFER:SetLineFade(value, 3)
 end
 
+--function ScripterLibGui.isBackgroundHidden()
+--	return savedVars_ScripterLibGui.general.isBackgroundHidden
+--end
+
 function ScripterLibGui.isMovable()
-	return savedVars_ScripterlibGui.general.isMovable
+	return savedVars_ScripterLibGui.general.isMovable
 end
 
 
 function ScripterLibGui.HideInDialogs(value)
-	savedVars_ScripterlibGui.general.hideInDialogs = value
+	savedVars_ScripterLibGui.general.hideInDialogs = value
 end
 
 function ScripterLibGui.isHiddenInDialogs()
-    return savedVars_ScripterlibGui.general.hideInDialogs
+    return savedVars_ScripterLibGui.general.hideInDialogs
 end
 
 function ScripterLibGui.setHidden(value)
-    savedVars_ScripterlibGui.general.isHidden = value
+    savedVars_ScripterLibGui.general.isHidden = value
     ScripterLibGui.window.ID:SetHidden(value)
 end
 
 function ScripterLibGui.Hide()
-    if savedVars_ScripterlibGui.general.isHidden == false then
+    if savedVars_ScripterLibGui.general.isHidden == false then
         ScripterLibGui.setHidden(true)
     end
 end
 
 function ScripterLibGui.Show()
-    if savedVars_ScripterlibGui.general.isHidden == true then
+    if savedVars_ScripterLibGui.general.isHidden == true then
         ScripterLibGui.setHidden(false)
     end
 end
 
 function ScripterLibGui.isHidden()
-    return savedVars_ScripterlibGui.general.isHidden
-end
-
--- function ScripterLibGui.getDefaultFont()
--- 	for i,v in pairs(LMP:HashTable("font")) do
--- 		if v == savedVars_ScripterlibGui.font.name then
--- 			return i
--- 		end
--- 	end
--- end
--- 
--- function ScripterLibGui.setDefaultFont(value)
--- 	savedVars_ScripterlibGui.font.name = LMP:HashTable("font")[value]
--- end
-
-function ScripterLibGui.setFontSize(value)
-	savedVars_ScripterlibGui.font.height = value
-end
-
-function ScripterLibGui.getFontSize()
-	return savedVars_ScripterlibGui.font.height
-end
-
-function ScripterLibGui.getFontStyles()
-	return ScripterLibGui.fontstyles
-end
-
-function ScripterLibGui.getFontStyle()
-	return savedVars_ScripterlibGui.font.style
-end
-
-function ScripterLibGui.setFontStyle(value)
-	savedVars_ScripterlibGui.font.style = value
+    return savedVars_ScripterLibGui.general.isHidden
 end
 
 function ScripterLibGui.isTimestampEnabled()
-	return savedVars_ScripterlibGui.timestamp
+	return savedVars_ScripterLibGui.timestamp
 end
 
 function ScripterLibGui.setTimestampEnabled(value)
-	savedVars_ScripterlibGui.timestamp = value
+	savedVars_ScripterLibGui.timestamp = value
 end
 
 function ScripterLibGui.addMessage(message)
@@ -318,5 +311,5 @@ function ScripterLibGui.addMessage(message)
 end
 
 function ScripterLibGui.initializeSavedVariable()
-	savedVars_ScripterlibGui = ZO_SavedVars:New("ScripterLibGui_SavedVariables", 1, nil, ScripterLibGui.defaults)
+	savedVars_ScripterLibGui = ZO_SavedVars:New("ScripterLibGui_SavedVariables", 1, nil, ScripterLibGui.defaults)
 end

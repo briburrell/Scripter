@@ -1,9 +1,10 @@
 ## Title: |c9966ffScripter|cffffff
-## Version: 1.96
+## Version: 1.99
 ## Author: Neo Natura
 ## APIVersion: 100009
 ## SavedVariables: Scripter_SavedVariables
 ## SavedVariables: ScripterSettings_SavedVariables
+## SavedVariables: ScripterLibGui_SavedVariables
 ## OptionalDependsOn: LibAddonMenu-2.0
 lib/LibStub/LibStub.lua
 lib/LibAddonMenu-2.0/LibAddonMenu-2.0.lua

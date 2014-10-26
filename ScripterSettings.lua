@@ -10,12 +10,18 @@ OPT_FADEOUT = "fadeout"
 OPT_JUNKMODE = "junkmode"
 OPT_LOG_MAX = "log_max"
 OPT_CHAT_MAX = "chat_max"
+OPT_CHAT_SUPPRESS = "chat_suppress"
 OPT_NOTIFY = "notify"
 OPT_NOTIFY_BOOK = "notify_book"
 OPT_NOTIFY_MONEY = "notify_money"
 OPT_NOTIFY_INVENTORY = "notify_inventory"
 OPT_NOTIFY_COMBAT = "notify_combat"
 OPT_NOTIFY_EFFECT = "notify_effect"
+OPT_NOTIFY_FADE_DELAY = "notify_fade_delay"
+OPT_NOTIFY_BG = "notify_bg"
+OPT_NOTIFY_MAX = "notify_max"
+OPT_NOTIFY_FONT = "notify_font"
+OPT_NOTIFY_FONT_SIZE = "notify_font_size"
 OPT_SYNC = "sync"
 OPT_SYNC_ITEM = "sync_item"
 OPT_SYNC_DELETE = "sync_delete"
@@ -38,12 +44,18 @@ local default_settings = {
     [OPT_JUNKMODE] = true,
     [OPT_LOG_MAX] = 40,
     [OPT_CHAT_MAX] = 50,
+    [OPT_CHAT_SUPPRESS] = false,
     [OPT_NOTIFY] = true,
     [OPT_NOTIFY_BOOK] = true,
     [OPT_NOTIFY_MONEY] = true,
     [OPT_NOTIFY_INVENTORY] = true,
     [OPT_NOTIFY_COMBAT] = true,
     [OPT_NOTIFY_EFFECT] = true,
+    [OPT_NOTIFY_FADE_DELAY] = 15,
+    [OPT_NOTIFY_BG] = true,
+    [OPT_NOTIFY_MAX] = 64,
+    [OPT_NOTIFY_FONT] = "Univers 57",
+    [OPT_NOTIFY_FONT_SIZE] = 14,
     [OPT_SYNC] = true,
     [OPT_SYNC_DELETE] = true,
     [OPT_SYNC_QUEST] = false,
@@ -63,12 +75,18 @@ local settingsLabel = {
     [OPT_CHAT_FONT] = "The font to render text in the chat window.",
     [OPT_CHAT_FONT_SIZE] = "The font size to display text in the chat window.",
     [OPT_CHAT_MAX] = "Number of chat log lines to list.",
+    [OPT_CHAT_SUPPRESS] = "Disabling incoming chat when in 'Do not disturb' mode.",
     [OPT_NOTIFY] = "Enable automatic text notification window.",
     [OPT_NOTIFY_BOOK] = "Enable automatic book notifications.",
     [OPT_NOTIFY_MONEY] = "Enable automatic monetary notifications.",
     [OPT_NOTIFY_INVENTORY] = "Enable automatic inventory notifications.",
     [OPT_NOTIFY_COMBAT] = "Enable automatic combat notifications.",
     [OPT_NOTIFY_EFFECT] = "Enable automatic effect notifications.",
+    [OPT_NOTIFY_FADE_DELAY] = "Seconds before notification window fades out.",
+    [OPT_NOTIFY_BG] = "Enable a black background behind the notification text.",
+    [OPT_NOTIFY_MAX] = "Set the number of scroll lines.",
+    [OPT_NOTIFY_FONT] = "The font to render text in the notification window.",
+    [OPT_NOTIFY_FONT_SIZE] = "The font size to display text in the notification window.",
     [OPT_SYNC] = "Enable automatic character attributes synchronization.",
     [OPT_SYNC_ITEM] = "Enable receiving of character item information.",
     [OPT_SYNC_CRAFT] = "Enable receiving of craft trait information.",
@@ -207,15 +225,86 @@ function ScripterSettings:CreateOptionsMenu()
         [9] = {
             type = "checkbox",
             name = "Notification Window",
-            tooltip = settingsLabel[OPT_NOTIFY],
+            tooltip = settingsLabel[OPT_LOG_MAX],
             getFunc = function() 
-	    	return self:GetValue(OPT_NOTIFY)
+	    	return self:GetValue(OPT_LOG_MAX)
             end,
             setFunc = function(value)
-                self:SetValue(OPT_NOTIFY, value)
+                self:SetValue(OPT_LOG_MAX, value)
             end
         },
         [10] = {
+            type = "checkbox",
+            name = "Window Background",
+            tooltip = settingsLabel[OPT_NOTIFY_BG],
+            getFunc = function() 
+	    	return self:GetValue(OPT_NOTIFY_BG)
+            end,
+            setFunc = function(value)
+                self:SetValue(OPT_NOTIFY_BG, value)
+                if value == true then
+                    ScripterLibGui.setBackgroundHidden(false)
+                else
+                    ScripterLibGui.setBackgroundHidden(true)
+                end
+            end
+        },
+        [11] = {
+            type = "slider",
+            name = "Fade Out Time (seconds)",
+	    min = 1,
+            max = 60,
+            tooltip = settingsLabel[OPT_NOTIFY_FADE_DELAY],
+            getFunc = function() 
+	    	return self:GetValue(OPT_NOTIFY_FADE_DELAY)
+            end,
+            setFunc = function(value)
+                self:SetValue(OPT_NOTIFY_FADE_DELAY, value)
+		ScripterLibGui.setFadeDelay(value)
+            end
+        },
+        [12] = {
+            type = "slider",
+            name = "Notification History (lines)",
+	    min = 10,
+            max = 1000,
+            tooltip = settingsLabel[OPT_NOTIFY_MAX],
+            getFunc = function() 
+	    	return self:GetValue(OPT_NOTIFY_MAX)
+            end,
+            setFunc = function(value)
+                self:SetValue(OPT_NOTIFY_MAX, value)
+		ScripterLibGui.setBufferMax()
+            end
+        },
+        [13] = {
+            type = "dropdown",
+            name = "Notification Window Text Font",
+            tooltip = settingsLabel[OPT_NOTIFY_FONT],
+	    choices = self:GetFontNames(),
+            getFunc = function() 
+	    	return self:GetValue(OPT_NOTIFY_FONT)
+            end,
+            setFunc = function(value)
+                self:SetValue(OPT_NOTIFY_FONT, value)
+                ScripterLibGui.setTextFont()
+            end
+        },
+        [14] = {
+            type = "slider",
+            name = "Notification Window Font Size",
+	    min = 6,
+            max = 24,
+            tooltip = settingsLabel[OPT_NOTIFY_FONT_SIZE],
+            getFunc = function() 
+	    	return self:GetValue(OPT_NOTIFY_FONT_SIZE)
+            end,
+            setFunc = function(value)
+                self:SetValue(OPT_NOTIFY_FONT_SIZE, value)
+                ScripterLibGui.setTextFont()
+            end
+        },
+        [15] = {
             type = "checkbox",
             name = "Book Notifications",
             tooltip = settingsLabel[OPT_NOTIFY_BOOK],
@@ -226,7 +315,7 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_NOTIFY_BOOK, value)
             end
         },
-        [11] = {
+        [16] = {
             type = "checkbox",
             name = "Money Notifications",
             tooltip = settingsLabel[OPT_NOTIFY_MONEY],
@@ -237,7 +326,7 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_NOTIFY_MONEY, value)
             end
         },
-        [12] = {
+        [17] = {
             type = "checkbox",
             name = "Inventory Notifications",
             tooltip = settingsLabel[OPT_NOTIFY_INVENTORY],
@@ -248,7 +337,7 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_NOTIFY_INVENTORY, value)
             end
         },
-        [13] = {
+        [18] = {
             type = "checkbox",
             name = "Combat Notifications",
             tooltip = settingsLabel[OPT_NOTIFY_COMBAT],
@@ -259,7 +348,7 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_NOTIFY_COMBAT, value)
             end
         },
-        [14] = {
+        [19] = {
             type = "checkbox",
             name = "Effect Notifications",
             tooltip = settingsLabel[OPT_NOTIFY_EFFECT],
@@ -270,11 +359,11 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_NOTIFY_EFFECT, value)
             end
         },
-        [15] = {
+        [20] = {
             type = "header",
             name = "Triggers",
         },
-        [16] = {
+        [21] = {
             type = "checkbox",
             name = "Auto Accept Invite",
             tooltip = settingsLabel[OPT_AUTOACCEPT],
@@ -285,7 +374,7 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_AUTOACCEPT, value)
             end
         },
-        [17] = {
+        [22] = {
             type = "checkbox",
             name = "Automatic Keybindings",
             tooltip = settingsLabel[OPT_AUTOBIND],
@@ -296,7 +385,7 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_AUTOBIND, value)
             end
         },
-        [18] = {
+        [23] = {
             type = "checkbox",
             name = "Remember Junk Items",
             tooltip = settingsLabel[OPT_JUNKMODE],
@@ -307,7 +396,7 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_JUNKMODE, value)
             end
         },
-        [19] = {
+        [24] = {
             type = "dropdown",
             name = "AFK Action Command",
 	    choices = { "<none>", "bored", "dance", "faint", "goaway", "juggleflame", "kick", "laugh", "leanbackcoin", "phew", "playdead", "sigh", "sit", "spit", "surprised", "tilt", "yawn", "wave", },
@@ -319,11 +408,11 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_AFK_ACTION, value)
             end
         },
-        [20] = {
+        [25] = {
             type = "header",
             name = "Character Log",
         },
-        [21] = {
+        [26] = {
             type = "slider",
             name = "Log History Lines",
 	    min = 1,
@@ -336,11 +425,11 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_LOG_MAX, value)
             end
         },
-        [22] = {
+        [27] = {
             type = "header",
             name = "Chat Window",
         },
-        [23] = {
+        [28] = {
             type = "slider",
             name = "Chat History Lines",
 	    min = 1,
@@ -351,6 +440,17 @@ function ScripterSettings:CreateOptionsMenu()
             end,
             setFunc = function(value)
                 self:SetValue(OPT_CHAT_MAX, value)
+            end
+        },
+        [29] = {
+            type = "checkbox",
+            name = "Suppress chat in 'Do not disturb' mode.",
+            tooltip = settingsLabel[OPT_CHAT_SUPPRESS],
+            getFunc = function() 
+	    	return self:GetValue(OPT_CHAT_SUPPRESS)
+            end,
+            setFunc = function(value)
+                self:SetValue(OPT_CHAT_SUPPRESS, value)
             end
         },
 --        [24] = {
@@ -378,11 +478,11 @@ function ScripterSettings:CreateOptionsMenu()
 --                self:SetValue(OPT_CHAT_FONT_SIZE, value)
 --            end
 --        },
-        [24] = {
+        [30] = {
             type = "header",
             name = "Diagnostics",
         },
-        [25] = {
+        [31] = {
             type = "checkbox",
             name = "Debug Mode",
             tooltip = settingsLabel[OPT_DEBUG],
