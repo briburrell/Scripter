@@ -9,6 +9,7 @@ OPT_DEBUG = "debug"
 OPT_FADEOUT = "fadeout"
 OPT_JUNKMODE = "junkmode"
 OPT_LOG_MAX = "log_max"
+OPT_CHAT_FOCUS = "chat_focus"
 OPT_CHAT_MAX = "chat_max"
 OPT_CHAT_SUPPRESS = "chat_suppress"
 OPT_NOTIFY = "notify"
@@ -17,6 +18,7 @@ OPT_NOTIFY_MONEY = "notify_money"
 OPT_NOTIFY_INVENTORY = "notify_inventory"
 OPT_NOTIFY_COMBAT = "notify_combat"
 OPT_NOTIFY_EFFECT = "notify_effect"
+OPT_NOTIFY_MISC = "notify_misc"
 OPT_NOTIFY_FADE_DELAY = "notify_fade_delay"
 OPT_NOTIFY_BG = "notify_bg"
 OPT_NOTIFY_MAX = "notify_max"
@@ -43,6 +45,7 @@ local default_settings = {
     [OPT_FADEOUT] = 15,
     [OPT_JUNKMODE] = true,
     [OPT_LOG_MAX] = 40,
+    [OPT_CHAT_FOCUS] = true,
     [OPT_CHAT_MAX] = 50,
     [OPT_CHAT_SUPPRESS] = false,
     [OPT_NOTIFY] = true,
@@ -51,6 +54,7 @@ local default_settings = {
     [OPT_NOTIFY_INVENTORY] = true,
     [OPT_NOTIFY_COMBAT] = true,
     [OPT_NOTIFY_EFFECT] = true,
+    [OPT_NOTIFY_MISC] = true,
     [OPT_NOTIFY_FADE_DELAY] = 15,
     [OPT_NOTIFY_BG] = true,
     [OPT_NOTIFY_MAX] = 64,
@@ -74,6 +78,7 @@ local settingsLabel = {
     [OPT_LOG_MAX] = "Number of character log lines to list.",
     [OPT_CHAT_FONT] = "The font to render text in the chat window.",
     [OPT_CHAT_FONT_SIZE] = "The font size to display text in the chat window.",
+    [OPT_CHAT_FOCUS] = "Retain focus after a command is performed.",
     [OPT_CHAT_MAX] = "Number of chat log lines to list.",
     [OPT_CHAT_SUPPRESS] = "Disabling incoming chat when in 'Do not disturb' mode.",
     [OPT_NOTIFY] = "Enable automatic text notification window.",
@@ -82,6 +87,7 @@ local settingsLabel = {
     [OPT_NOTIFY_INVENTORY] = "Enable automatic inventory notifications.",
     [OPT_NOTIFY_COMBAT] = "Enable automatic combat notifications.",
     [OPT_NOTIFY_EFFECT] = "Enable automatic effect notifications.",
+    [OPT_NOTIFY_MISC] = "Enable automatic miscellaneous notifications.",
     [OPT_NOTIFY_FADE_DELAY] = "Seconds before notification window fades out.",
     [OPT_NOTIFY_BG] = "Enable a black background behind the notification text.",
     [OPT_NOTIFY_MAX] = "Set the number of scroll lines.",
@@ -360,10 +366,21 @@ function ScripterSettings:CreateOptionsMenu()
             end
         },
         [20] = {
+            type = "checkbox",
+            name = "Miscellaneous Notifications",
+            tooltip = settingsLabel[OPT_NOTIFY_MISC],
+            getFunc = function() 
+	    	return self:GetValue(OPT_NOTIFY_MISC)
+            end,
+            setFunc = function(value)
+                self:SetValue(OPT_NOTIFY_MISC, value)
+            end
+        },
+        [21] = {
             type = "header",
             name = "Triggers",
         },
-        [21] = {
+        [22] = {
             type = "checkbox",
             name = "Auto Accept Invite",
             tooltip = settingsLabel[OPT_AUTOACCEPT],
@@ -374,7 +391,7 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_AUTOACCEPT, value)
             end
         },
-        [22] = {
+        [23] = {
             type = "checkbox",
             name = "Automatic Keybindings",
             tooltip = settingsLabel[OPT_AUTOBIND],
@@ -385,7 +402,7 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_AUTOBIND, value)
             end
         },
-        [23] = {
+        [24] = {
             type = "checkbox",
             name = "Remember Junk Items",
             tooltip = settingsLabel[OPT_JUNKMODE],
@@ -396,7 +413,7 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_JUNKMODE, value)
             end
         },
-        [24] = {
+        [25] = {
             type = "dropdown",
             name = "AFK Action Command",
 	    choices = { "<none>", "bored", "dance", "faint", "goaway", "juggleflame", "kick", "laugh", "leanbackcoin", "phew", "playdead", "sigh", "sit", "spit", "surprised", "tilt", "yawn", "wave", },
@@ -408,11 +425,11 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_AFK_ACTION, value)
             end
         },
-        [25] = {
+        [26] = {
             type = "header",
             name = "Character Log",
         },
-        [26] = {
+        [27] = {
             type = "slider",
             name = "Log History Lines",
 	    min = 1,
@@ -425,11 +442,22 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_LOG_MAX, value)
             end
         },
-        [27] = {
+        [28] = {
             type = "header",
             name = "Chat Window",
         },
-        [28] = {
+        [29] = {
+            type = "checkbox",
+            name = "Retain Command Focus",
+            tooltip = settingsLabel[OPT_CHAT_FOCUS],
+            getFunc = function() 
+	    	return self:GetValue(OPT_CHAT_FOCUS)
+            end,
+            setFunc = function(value)
+                self:SetValue(OPT_CHAT_FOCUS, value)
+            end
+        },
+        [30] = {
             type = "slider",
             name = "Chat History Lines",
 	    min = 1,
@@ -442,7 +470,7 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_CHAT_MAX, value)
             end
         },
-        [29] = {
+        [31] = {
             type = "checkbox",
             name = "Suppress chat in 'Do not disturb' mode.",
             tooltip = settingsLabel[OPT_CHAT_SUPPRESS],
@@ -478,11 +506,11 @@ function ScripterSettings:CreateOptionsMenu()
 --                self:SetValue(OPT_CHAT_FONT_SIZE, value)
 --            end
 --        },
-        [30] = {
+        [32] = {
             type = "header",
             name = "Diagnostics",
         },
-        [31] = {
+        [33] = {
             type = "checkbox",
             name = "Debug Mode",
             tooltip = settingsLabel[OPT_DEBUG],

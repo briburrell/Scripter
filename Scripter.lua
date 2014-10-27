@@ -47,13 +47,65 @@ local GetActionLayerCategoryInfo = GetActionLayerCategoryInfo
 local GetActionInfo = GetActionInfo
 local GetActionIndicesFromName = GetActionIndicesFromName
 
+function Scripter.InitChatSystem()
+   local scrollbar = CHAT_SYSTEM["containers"][1]["scrollbar"]
+   local buffer = CHAT_SYSTEM["containers"][1]["currentBuffer"]
+   if (scrollbar ~= nil and scrollbar:IsHidden() == true) then
+       scrollbar:SetHidden(false)
+       scrollbar:SetEnabled(true)
+--       buffer:SetClearBufferAfterFadeout(false)
+   end
+end
+
+function Scripter.ScrollChatToBottom()
+    if CHAT_SYSTEM == nil then return end
+    local buffer = CHAT_SYSTEM["containers"][1]["currentBuffer"]
+
+    if buffer ~= nil then
+        local max = buffer:GetNumHistoryLines()
+        local pos = buffer:GetScrollPosition()
+        buffer:MoveScrollPosition((max - pos) * -1)
+    else
+        local max = CHAT_SYSTEM:GetNumHistoryLines()
+        local pos = CHAT_SYSTEM:GetScrollPosition()
+        CHAT_SYSTEM:MoveScrollPosition((max - pos) * -1)
+    end
+end
+
 local function print(...)
-    d("|cFFFFFF" .. strjoin("", ...))
+    if CHAT_SYSTEM == nil then return end
+
+    local buffer = CHAT_SYSTEM["containers"][1]["currentBuffer"]
+    if buffer ~= nil then
+       buffer:AddMessage("|cFFFFFF" .. strjoin("", ...))
+--       Scripter.InitChatSystem()
+--       Scripter.ScrollChatToBottom()
+    else
+       CHAT_SYSTEM:AddMessage("|cFFFFFF" .. strjoin("", ...))
+    end
+
+    CHAT_SYSTEM:AddMessage(nil)
+end
+
+function Scripter.ClearChatWindow()
+    if CHAT_SYSTEM == nil then return end
+    local buffer = CHAT_SYSTEM["containers"][1]["currentBuffer"]
+    if buffer ~= nil then
+       buffer:Clear()
+    else
+       CHAT_SYSTEM:Clear()
+    end
+end
+
+local function strifind(text, kwd)
+    if string.match(text:lower(), kwd:lower()) ~= nil then return true end
+    return false
 end
 
 local default_help_desc = {
     ["/away"] = "Manage \"away from keyboard\" mode.",
     ["/alias"] = "Create and manage slash commands.",
+    ["/clear"] = "Clear the chat window history.",
     ["/cmd"] = "Display slash commands.",
     ["/eq"] = "Character inventory.",
     ["/friend"] = "Display contacts information.",
@@ -65,6 +117,7 @@ local default_help_desc = {
     ["/loc"] = "Character location information.",
     ["/log"] = "Manage character activity log.",
     ["/mail"] = "Manage character's mail messages.",
+    ["/min"] = "Minimize the chat window.",
     ["/quest"] = "Display character quest information.",
     ["/research"] = "Display researchable items.",
     ["/sguild"] = "Display guild character information.",
@@ -141,15 +194,17 @@ Scripter.defaults = {
     ["userdata_junk"] = {},
     ["userdata_filter"] = {},
     ["userdata_public"] = {},
-    ["userdata_stat"] = {},
+    ["userdata_ability_rate"] = {},
     ["userdata_skill"] = {},
     ["userdata_quest"] = {},
     ["userdata_vendor"] = {},
+    ["userdata_vendor_loc"] = {},
     ["userdata_zone"] = {},
+    ["userdata_zone_loc"] = {},
     ["userdata_attr"] = {},
     ["userdata_item_worn"] = {},
     ["userdata_money"] = 0,
-    ["userdata_skill_rate"] = {},
+    ["userdata_skill_percent"] = {},
     ["userdata_sync"] = {},
     ["userdata_trait"] = {},
     -- persistent character attribute information
@@ -420,6 +475,7 @@ function Scripter.HighlightText(text)
 end
 
 function Scripter.PrintDebug(text)
+    if text == nil then return end
     if Settings:GetValue(OPT_DEBUG) == false then return end
     print("[debug] " .. text)
 end
@@ -783,6 +839,13 @@ function Scripter.PreCommandCheck()
     if GetPlayerStatus() == PLAYER_STATUS_AWAY then
         Scripter.AFKWake()
     end
+
+    
+    -- disables lose focus after entering command
+    if Settings:GetValue(OPT_CHAT_FOCUS) == true then 
+        IgnoreMouseDownEditFocusLoss()
+        CHAT_SYSTEM:StartTextEntry(nil, nil)
+    end
 end
 
 function Scripter.ChannelFilter(eventType, messageType, fromName, text)
@@ -809,13 +872,13 @@ function Scripter.AppendLog(ntext)
     Scripter.savedVariables.log[Scripter.savedVariables.log_idx] = "[" .. tstr .. "] " .. ntext
 end
 
-
-function Scripter.notifyAction(ntext)
+function Scripter.NotifyCharacterAction(notifyType, ntext)
     ntext = "|cFFFFFF" .. ntext
-    if Settings:GetValue(OPT_NOTIFY) == true then
-        ScripterLibGui.addMessage(ntext)
-    end
     Scripter.AppendLog(ntext)
+
+    if Settings:GetValue(OPT_NOTIFY) == false then return end
+    if Settings:GetValue(notifyType) == false then return end
+    ScripterLibGui.addMessage(ntext)
 end
 
 function Scripter.ChatListCommand(argtext)
@@ -936,7 +999,7 @@ function NewSyncChannelEvent(sender, message)
                 Scripter.savedVariables.userdata_public[sender] = Scripter.savedVariables.userdata_public[sender] .. name .. ": " .. val .. "  "
             end
 	end
-	Scripter.notifyAction("Sync received from '" .. Scripter.HighlightText(sender) .. "'.")
+	Scripter.NotifyCharacterAction(OPT_NOTIFY_MISC, "Sync received from '" .. Scripter.HighlightText(sender) .. "'.")
     end
 end
 
@@ -975,6 +1038,32 @@ function Scripter.GetZoneAndSubzone(alternative)
    return select(3,(GetMapTileTexture()):lower():find("maps/([%w%-]+)/([%w%-]+_[%w%-]+)"))
 end
 
+function Scripter.GetPlayerLocation()
+    local zone, subzone = Scripter.GetZoneAndSubzone()
+    local x, y = GetMapPlayerPosition('player')
+    local subdesc = GetMapName()
+
+    loc = {}
+    loc.x = Scripter.FormatCordinate(x)
+    loc.y = Scripter.FormatCordinate(y)
+    loc.area = subdesc
+    loc.areaId = subzone
+    loc.zone = zone
+
+    return loc
+end
+
+
+function Scripter.GetPlayerSkillName(name)
+    if (name == nil or name == "") then return nil end
+
+    for k,v in pairs(Scripter.savedVariables.chardata_skill) do
+        if strifind(k, name) then return k end
+    end
+
+    return nil
+end
+
 function Scripter.GetPlayerSkillData(name)
     if (name == nil or name == "") then return nil end
 
@@ -982,6 +1071,16 @@ function Scripter.GetPlayerSkillData(name)
         if string.match(k, name) ~= nil then
             return v
         end
+    end
+
+    return nil
+end
+
+function Scripter.GetPlayerQuestName(name)
+    if (name == nil or name == "") then return nil end
+
+    for k,v in pairs(Scripter.savedVariables.chardata_quest) do
+        if strifind(k, name) then return k end
     end
 
     return nil
@@ -999,6 +1098,16 @@ function Scripter.GetPlayerQuestData(name)
     return nil
 end
 
+function Scripter.GetPlayerCraftName(name)
+    if (name == nil or name == "") then return nil end
+
+    for k,v in pairs(Scripter.savedVariables.chardata_trait) do
+        if strifind(k, name) then return k end
+    end
+
+    return nil
+end
+
 function Scripter.GetPlayerCraftData(name)
     if (name == nil or name == "") then return nil end
 
@@ -1011,6 +1120,15 @@ function Scripter.GetPlayerCraftData(name)
     return nil
 end
 
+function Scripter.GetPlayerAttributeName(name)
+    if (name == nil or name == "") then return nil end
+
+    for k,v in pairs(Scripter.savedVariables.chardata_attr) do
+        if strifind(k, name) then return k end
+    end
+
+    return nil
+end
 function Scripter.GetPlayerAttributeData(name)
     if (name == nil or name == "") then return nil end
 
@@ -1019,6 +1137,16 @@ function Scripter.GetPlayerAttributeData(name)
             v[S_NAME] = k
             return v
         end
+    end
+
+    return nil
+end
+
+function Scripter.GetPlayerItemName(name)
+    if (name == nil or name == "") then return nil end
+
+    for k,v in pairs(Scripter.savedVariables.chardata_item_worn) do
+        if strifind(k, name) then return k end
     end
 
     return nil
@@ -1051,6 +1179,11 @@ function Scripter.NewVendorEvent(Event, Unit)
     if reaction ~= UNIT_REACTION_INTERACT and reaction ~= UNIT_REACTION_NPC_ALLY then return end
 
     Scripter.savedVariables.userdata_vendor[name] = subdesc
+    local x,y = GetMapPlayerPosition('player')
+    local loc = {}
+    loc.x = x
+    loc.y = y
+    Scripter.savedVariables.userdata_vendor_loc[name] = loc 
 end
 
 function Scripter.GetQuestInfo()
@@ -1092,17 +1225,69 @@ function Scripter.NewZoneEvent()
     local zone, subzone = Scripter.GetZoneAndSubzone()
     local subdesc = GetMapName()
     Scripter.savedVariables.userdata_zone[subdesc] = zone
+
+    local plrX, plrY = GetMapPlayerPosition('player')
+    local loc = {}
+    loc.x = plrX
+    loc.y = plrY
+    Scripter.savedVariables.userdata_zone_loc[subdesc] = loc
 end
 
-function Scripter.addAbilityRate(abilityName, hitValue)
+function Scripter.SetSkillPercentage(name, value)
+    local charName = GetUnitName('player')
+    local data = Scripter.savedVariables.userdata_skill_percent[charName]
+    if data == nil then data = {} end
+
+    data[name] = value
+    Scripter.savedVariables.userdata_skill_percent[charName] = data
+end
+
+function Scripter.GetSkillPercentage(name, value)
+    local charName = GetUnitName('player')
+    local data = Scripter.savedVariables.userdata_skill_percent[charName]
+    if data == nil then return 0 end
+
+    local value = data[name]
+    if value == nil then return 0 end
+
+    return value
+end
+
+function Scripter.SetAbilityRate(name, value)
+    local charName = GetUnitName('player')
+    local data = Scripter.savedVariables.userdata_ability_rate[charName]
+    if data == nil then data = {} end
+
+    data[name] = value
+    Scripter.savedVariables.userdata_ability_rate[charName] = data
+end
+
+function Scripter.GetAbilityRate(name)
+    local charName = GetUnitName('player')
+    local data = Scripter.savedVariables.userdata_ability_rate[charName]
+    if data == nil then return 0 end
+
+    local value = data[name]
+    if value == nil then return 0 end
+    return value
+end
+
+function Scripter.GetAbilityRates()
+    local charName = GetUnitName('player')
+    local data = Scripter.savedVariables.userdata_ability_rate[charName]
+
+    if data == nil then data = {} end
+    return data
+end
+function Scripter.ClearAbilityRates()
+    local charName = GetUnitName('player')
+    Scripter.savedVariables.userdata_ability_rate[charName] = nil
+end
+
+function Scripter.AddAbilityRate(abilityName, hitValue)
     if Scripter.savedVariables == nil then return end
     if hitValue == 0 then return end
     if abilityName == "" then return end
-
-    if Scripter.savedVariables.userdata_stat[abilityName] == nil then
-        -- initial addon load
-        Scripter.savedVariables.userdata_stat[abilityName] = 0
-    end
 
     if stat_stamp[abilityName] == nil then
         -- initial action per login session
@@ -1113,7 +1298,9 @@ function Scripter.addAbilityRate(abilityName, hitValue)
         local tspan = (GetTimeStamp() - stat_stamp[abilityName])
         stat_span[abilityName] = stat_span[abilityName] + hitValue
         local avg = stat_span[abilityName] / (tspan / 60);
-        Scripter.savedVariables.userdata_stat[abilityName] = (avg + Scripter.savedVariables.userdata_stat[abilityName]) / 2
+	local orig_value = Scripter.GetAbilityRate(abilityName, value)
+        local value = (avg + orig_value) / 2
+	Scripter.SetAbilityRate(abilityName, value)
     end
 end
 
@@ -1127,15 +1314,14 @@ function Scripter.NewMoneyEvent(eventId, newMoney, oldMoney, updateReason)
 end
 
 function Scripter.AddItemEvent(eventId, bagId, slotId, itemSoundCategory, updateReason)
-    Scripter.addAbilityRate("Loot", 1)
-    if Settings:GetValue(OPT_NOTIFY_INVENTORY) == false then return end
+    Scripter.AddAbilityRate("Loot", 1)
 
     local link = GetItemLink(bagId, slotId)
     local name,col,typID,id,qual,levelreq,enchant,ench1,ench2,un1,un2,un3,un4,un5,un6,un7,un8,un9,style,un10,bound,charge,un11=ZO_LinkHandler_ParseLink(link)
 
     name = Scripter.FormatItemName(name)
     if levelreq ~= nil then
-        Scripter.notifyAction("Obtained item '" .. Scripter.HighlightText(name) .. "' Lv " .. levelreq .. ".")
+        Scripter.NotifyCharacterAction(OPT_NOTIFY_INVENTORY, "Obtained item '" .. Scripter.HighlightText(name) .. "' Lv " .. levelreq .. ".")
     end
 end
 
@@ -1207,7 +1393,7 @@ function Scripter.SetJunkItem(bagId, slotId)
     end
 
     Scripter.savedVariables.userdata_junk[itemName] = slotId
-    Scripter.notifyAction(itemName .. " has been marked as junk.")
+    Scripter.NotifyCharacterAction(OPT_NOTIFY_INVENTORY, itemName .. " has been marked as junk.")
 end
 
 function Scripter.PerformJunkItem(bagId, slotId)
@@ -1356,7 +1542,7 @@ function Scripter.NewItemEvent(eventId, bagId, slotId, isNewItem, itemSoundCateg
                 local link = GetItemLink(bagId, slotId)
                 local name,col,typID,id,qual,levelreq,enchant,ench1,ench2,un1,un2,un3,un4,un5,un6,un7,un8,un9,style,un10,bound,charge,un11=ZO_LinkHandler_ParseLink(link)
 		name = Scripter.FormatItemName(name)
-                Scripter.notifyAction("Item '" .. Scripter.HighlightText(name) .. "' durability is " .. cond .. "%.")
+                Scripter.NotifyCharacterAction(OPT_NOTIFY_INVENTORY, "Item '" .. Scripter.HighlightText(name) .. "' durability is " .. cond .. "%.")
             end
         end
         Scripter.savedVariables.slot[slotId] = cond
@@ -1367,10 +1553,8 @@ function Scripter.NewDeathEvent(event)
     Scripter.PreEventCheck()
 
     if (event == EVENT_PLAYER_DEAD) then -- player died
-        if Settings:GetValue(OPT_NOTIFY_COMBAT) == true then
-            Scripter.notifyAction("You have died!")
-        end
-        Scripter.addAbilityRate("Death", 1)
+        Scripter.NotifyCharacterAction(OPT_NOTIFY_COMBAT, "You have died!")
+        Scripter.AddAbilityRate("Death", 1)
     end
 end
 
@@ -1383,46 +1567,42 @@ function Scripter.AddEffectEvent(effectName, buffType, stackCount, abilityType)
     if effectName == "" then
         return
     end
-    if Settings:GetValue(OPT_NOTIFY_EFFECT) == true then
-        local btype = nil
-        if buffType == ABILITY_TYPE_STUN then
-            btype = "stun"
-        elseif buffType == ABILITY_TYPE_STAGGER then
-            btype = "stagger"
-        elseif buffType == ABILITY_TYPE_BLOCK then
-            btype = "block"
-        elseif buffType == ABILITY_TYPE_OFFBALANCE then
-            btype = "off-balance"
-        elseif buffType == ABILITY_TYPE_BONUS then
-            btype = "bonus"
-        elseif (string.match(effectName, "^.-Potion" )) then
-            btype = "potion"
-        end
-
-        local text = "A"
-        if (abilityType == 0 or abilityType == 1 or abilityType == 10) then
-            text = "A positive"
-        end
-        if btype ~= nil then
-            text = text .. " " .. btype
-        end
-	effectName = Scripter.GetEffectLabel(effectName)
-        text = text .. " '" .. Scripter.HighlightText(effectName) .. "' effect has occurred."
-        if (stackCount ~= nil and stackCount ~= 0) then
-            text = text .. " x" .. stackCount
-        end
-        Scripter.notifyAction(text)
+    local btype = nil
+    if buffType == ABILITY_TYPE_STUN then
+        btype = "stun"
+    elseif buffType == ABILITY_TYPE_STAGGER then
+        btype = "stagger"
+    elseif buffType == ABILITY_TYPE_BLOCK then
+        btype = "block"
+    elseif buffType == ABILITY_TYPE_OFFBALANCE then
+        btype = "off-balance"
+    elseif buffType == ABILITY_TYPE_BONUS then
+        btype = "bonus"
+    elseif (string.match(effectName, "^.-Potion" )) then
+        btype = "potion"
     end
+
+    local text = "A"
+    if (abilityType == 0 or abilityType == 1 or abilityType == 10) then
+        text = "A positive"
+    end
+    if btype ~= nil then
+        text = text .. " " .. btype
+    end
+	effectName = Scripter.GetEffectLabel(effectName)
+    text = text .. " '" .. Scripter.HighlightText(effectName) .. "' effect has occurred."
+    if (stackCount ~= nil and stackCount ~= 0) then
+        text = text .. " x" .. stackCount
+    end
+    Scripter.NotifyCharacterAction(OPT_NOTIFY_EFFECT, text)
 end
 
 function Scripter.RemoveEffectEvent(effectName, buffType, abilityType)
-    if Settings:GetValue(OPT_NOTIFY_EFFECT) == true then
-        local kind = "negative"
-        if (abilityType == 0 or abilityType == 1 or abilityType == 10) then
-            kind = "positive";
-        end
-        Scripter.notifyAction("The " .. kind .. " '" .. Scripter.HighlightText(effectName) .. "' effect fades away.")
+    local kind = "negative"
+    if (abilityType == 0 or abilityType == 1 or abilityType == 10) then
+        kind = "positive";
     end
+    Scripter.NotifyCharacterAction(OPT_NOTIFY_EFFECT, "The " .. kind .. " '" .. Scripter.HighlightText(effectName) .. "' effect fades away.")
 end
 
 function Scripter.NewEffectEvent(eventCode, changeType, effectSlot, effectName, unitTag, beginTime, endTime, stackCount, iconName, buffType, effectType, abilityType, statusEffectType)
@@ -1466,7 +1646,7 @@ function Scripter.NewGroupInviteEvent()
     	
     	if(inviterDisplayName == regularCharacterName) then
     		AcceptGroupInvite()
-    		Scripter.notifyAction("Accepted group invite from '" .. Scripter.HighlightText(uniqueCharacterName) .. "'.")
+    		Scripter.NotifyCharacterAction(OPT_NOTIFY_MISC, "Accepted group invite from '" .. Scripter.HighlightText(uniqueCharacterName) .. "'.")
     		break
     	end
     end
@@ -1520,7 +1700,7 @@ function Scripter.GetFriendText(id)
         timeSinceLogoff = Scripter.FormatSecondsToDDHHMMSS(secsSinceLogoff)
     end
     
-    text = "Lv " .. level_str .. " " .. alliance_str .. " " .. class_str .. " " .. Scripter.HighlightText(characterName) .. " (" .. displayName .. ") in " .. zoneName
+    text = "Lv " .. level_str .. " " .. alliance_str .. " " .. class_str .. " " .. Scripter.HighlightText(characterName) .. displayName .. " in " .. zoneName
     if secsSinceLogoff > 0 then
         text = text .. " (Logoff: " .. timeSinceLogoff .. ")"
     else
@@ -1633,8 +1813,19 @@ end
 
 function Scripter.DeleteGameMail(mailId)
 --    RequestOpenMailbox()
+    local unread, returned, fromSystem, fromCustomerService = GetMailFlags(mailId)
+    if (unread == true or returned == true or fromSystem == true or fromCustomerService == true) then return false end
+
     local body = ReadMail(mailId)
-    DeleteMail(mailId, false)
+    if body == "" then return false end
+
+--    Scripter.PrintDebug("DeleteGameMail " .. mailId)
+
+    DeleteMail(mailId, false);
+--		MAIL_INBOX:RefreshData()
+--		PlaySound(SOUNDS.MAIL_ITEM_DELETED)
+    
+--    ClearQueuedMail()
 --    CloseMailbox()
 end
 
@@ -1660,7 +1851,7 @@ function Scripter.NewMailEvent(eventCode, mailId)
 
             Scripter.MSync_ParseMailEvent(senderName, body)
 
-	    Scripter.notifyAction("Received synchronization from '" .. Scripter.HighlightText(senderName) .. " (" .. senderAccount .. ")'.")
+	    Scripter.NotifyCharacterAction(OPT_NOTIFY_MISC, "Received synchronization from '" .. Scripter.HighlightText(senderName) .. " (" .. senderAccount .. ")'.")
 	    Scripter.savedVariables.chardata_sync_read[senderName] = GetTimeStamp()
         end
 
@@ -1702,8 +1893,8 @@ function Scripter.NewQuestCompleteEvent(eventCode, questName, level, prevXp, cur
     Scripter.PrintDebug("NewQuestCompleteEvent questName:" .. questName .. " level:" .. level)
     Scripter.PreEventCheck()
 
-    Scripter.addAbilityRate("Quest", 1)
-    Scripter.notifyAction("You completed quest '" .. Scripter.HighlightText(questName) .. " [Lv " .. level .. "]'.")
+    Scripter.AddAbilityRate("Quest", 1)
+    Scripter.NotifyCharacterAction(OPT_NOTIFY_MISC, "You completed quest '" .. Scripter.HighlightText(questName) .. " [Lv " .. level .. "]'.")
 
     Scripter.savedVariables.userdata_quest[questName] = nil
 end
@@ -1715,7 +1906,7 @@ end
 
 function Scripter.NewPlayerStatusEvent(eventCode, _, playerStatus)
     Scripter.PrintDebug("NewPlayerStatusEvent playerStatus:" .. playerStatus)
-    Scripter.notifyAction("Character mode transitioned to '" .. Scripter.HighlightText(Scripter.GetPlayerStatusLabel(playerStatus)) .. "'.")
+    Scripter.NotifyCharacterAction(OPT_NOTIFY_MISC, "Character mode transitioned to '" .. Scripter.HighlightText(Scripter.GetPlayerStatusLabel(playerStatus)) .. "'.")
 end
 
 function Scripter.NewTraitEvent(eventCode, itemName, itemTrait)
@@ -1723,7 +1914,7 @@ function Scripter.NewTraitEvent(eventCode, itemName, itemTrait)
     Scripter.PrintDebug("NewTraitEvent eventCode:" .. eventCode .. " itemName:" .. itemName .. " itemTrait:" .. itemTrait)
     Scripter.PreEventCheck()
 
-    Scripter.notifyAction("You learned the '" .. Scripter.HighlightText(itemTrait .. " " .. itemName) .. "' crafting trait.")
+    Scripter.NotifyCharacterAction(OPT_NOTIFY_MISC, "You learned the '" .. Scripter.HighlightText(itemTrait .. " " .. itemName) .. "' crafting trait.")
     Scripter.RefreshCharacterTraitInfo()
 end
 
@@ -1943,7 +2134,7 @@ end
 function Scripter.ScoreSlashCommandHelp()
     print("- /stat [<user>]  |cff8f41  Show summary of player's attributes.")
     print("- /stat /action  |cff8f41  Show recent character actions.")
-    print("- /stat /all  |cff8f41  Show all character information.")
+    print("- /stat /all [<user>]  |cff8f41  Show all of a character's information.")
     print("- /stat /buff  |cff8f41  Show current character effects.")
     print("- /stat /clear  |cff8f41  Reset action statistics.")
     print("- /stat /craft [<user>]  |cff8f41  Display character crafting traits.")
@@ -2006,12 +2197,15 @@ end
 function Scripter.ZoneSlashCommandHelp()
     print("- /loc  |cff8f41  Show current location.")
     print("- /loc <kwd>  |cff8f41  List all locations matching <kwd>.")
-    print("- /loc /list  |cff8f41  List all known locations.")
+    print("- /loc /area  |cff8f41  List points of interest in map zone.")
     print("- /loc /clear  |cff8f41  Clear all known locations.")
+    print("- /loc /list  |cff8f41  List all known locations.")
 end
 
 function Scripter.QuestSlashCommandHelp()
-    print("- /quest [<user>]  |cff8f41  Display character's active quests.")
+    print("- /quest  |cff8f41  Display active quests in local area.")
+    print("- /quest [<user>]  |cff8f41  Display a character's active quests.")
+    print("- /quest /list  |cff8f41  Display all character's active quests.")
 end
 
 function Scripter.InventorySlashCommandHelp()
@@ -2055,6 +2249,14 @@ function Scripter.MailSlashCommandHelp()
     print("- /mail /read <id>  |cff8f41  Read the full contents of a mail message.")
     print("- /mail /purge  |cff8f41  Purge all mail without attachments.")
 end
+
+function Scripter.MinimizeSlashCommandHelp()
+    print("- /min  |cff8f41  " .. Scripter.savedVariables.userhelp_desc["/min"])
+end
+function Scripter.ClearSlashCommandHelp()
+    print("- /clear  |cff8f41  " .. Scripter.savedVariables.userhelp_desc["/clear"])
+end
+
 function Scripter.FilterSlashCommandHelp()
     print("- /filter  |cff8f41  Print all current chat filters.")
     print("- /filter <text>  |cff8f41  Add a new chat filter keyword.");
@@ -2069,6 +2271,7 @@ end
 Scripter.helpCommands = {
     ["away"] = Scripter.AFKSlashCommandHelp,
     ["alias"] = Scripter.AliasSlashCommandHelp,
+    ["clear"] = Scripter.ClearSlashCommandHelp,
     ["cmd"] = Scripter.CommandSlashCommandHelp,
     ["eq"] = Scripter.InventorySlashCommandHelp,
     ["friend"] = Scripter.FriendSlashCommandHelp,
@@ -2078,6 +2281,7 @@ Scripter.helpCommands = {
     ["loc"] = Scripter.ZoneSlashCommandHelp,
     ["log"] = Scripter.LogSlashCommandHelp,
     ["mail"] = Scripter.MailSlashCommandHelp,
+    ["min"] = Scripter.MinimizeSlashCommandHelp,
     ["research"] = Scripter.ResearchSlashCommandHelp,
     ["sguild"] = Scripter.GuildSlashCommandHelp,
     ["sgroup"] = Scripter.PartySlashCommandHelp,
@@ -2169,8 +2373,9 @@ function Scripter.ListFriendCommand(argtext)
     end
     for i = 1, GetNumFriends(), 1 do
         local displayName, note, playerStatus, secsSinceLogoff = GetFriendInfo(i)
+        local hasCharacter, characterName = GetFriendCharacterInfo(i)
         local text = Scripter.GetFriendText(i)
-        if (argtext == nil or string.match(displayName, argtext) ~= nil) then
+        if (argtext == nil or strifind(displayName, argtext) or strifind(characterName, argtext)) then
             print(text)
         end
     end
@@ -2411,14 +2616,14 @@ function Scripter.LogPrintCommand(argtext)
 end
 
 function Scripter.LogFilterListCommand(argtext)
-	print("History (" .. argtext .. "):")
+    print("History (" .. argtext .. "):")
     for i = Scripter.savedVariables.log_idx + 1, 1000, 1 do
 	    if Scripter.savedVariables.log[i] ~= nil then
-		    if string.match(Scripter.savedVariables.log[i], argtext) ~= nil then
+		    if strifind(Scripter.savedVariables.log[i], argtext) then
 		        print(Scripter.savedVariables.log[i])
-			end
-		end
-	end
+                    end
+            end
+    end
     for i = 1, Scripter.savedVariables.log_idx, 1 do
 	    if Scripter.savedVariables.log[i] ~= nil then
 		    if string.match(Scripter.savedVariables.log[i], argtext) ~= nil then
@@ -2515,17 +2720,18 @@ function Scripter.ScoreListStatCommand(argtext)
         Scripter.StorePlayerStatInfo()
         Scripter.PrintPlayerStatInfo(Scripter.savedVariables.userdata_attr, 'player')
     else
-        local text
-        local data = Scripter.GetPlayerAttributeData(argtext)
-        if data == nil then
+        local charName = Scripter.GetPlayerAttributeName(argtext)
+        if charName == nil then
             print("Scripter: No character attribute info available for user '" .. argtext .. "'.")
             return
         end
-        
+
+        local text
+        local data = Scripter.GetPlayerAttributeData(charName)
         if (data[S_LEVEL] ~= nil and data[S_CLASS] ~= nil) then
-            text = "Lv " .. data[S_LEVEL] .. " " .. " " .. data[S_CLASS] .. " '" .. Scripter.HighlightText(data[S_NAME]) .. "'"
+            text = "Lv " .. data[S_LEVEL] .. " " .. " " .. data[S_CLASS] .. " '" .. Scripter.HighlightText(charName) .. "'"
         else
-            text = "'" .. Scripter.HighlightText(data[S_NAME]) .. "'"
+            text = "'" .. Scripter.HighlightText(charName) .. "'"
         end 
         print(text)
         
@@ -2539,7 +2745,8 @@ end
 
 function Scripter.ScoreListActionCommand(argtext)
     print("Actions:")
-    for k,v in pairs(Scripter.savedVariables.userdata_stat) do
+    local abil = Scripter.GetAbilityRates()
+    for k,v in pairs(abil) do
 	    if v ~= nil then
 			    if v ~= 0 then
       			if stat_span[k] == nil then
@@ -2554,7 +2761,8 @@ end
 
 function Scripter.ScoreListActionSummary()
 	local text = "Actions: "
-	for k,v in pairs(Scripter.savedVariables.userdata_stat) do
+	local abil = Scripter.GetAbilityRates()
+	for k,v in pairs(abil) do
 	    if (v ~= nil and v ~= 0) then
 	        text = text .. k .. " (" .. string.format("%7.2f", v) .. "/min)  "
 	    end
@@ -2612,7 +2820,7 @@ function Scripter.ScoreSummaryCommand(argtext)
 end
 
 function Scripter.ScoreResetCommand(argtext)
-    Scripter.savedVariables.userdata_stat = {}
+    Scripter.ClearAbilityRates()
     Scripter.savedVariables.chardata_attr = {}
     Scripter.savedVariables.chardata_skill = {}
     stat_span = {}
@@ -2621,12 +2829,18 @@ function Scripter.ScoreResetCommand(argtext)
 end
 
 function Scripter.ScoreListFullCommand(argtext)
-    Scripter.ScoreExpCommand(argtext)
---    Scripter.ZoneInfoCommand()
-    Scripter.ScoreListStatCommand(argtext)
-    Scripter.ScoreListActionCommand(argtext)
-    Scripter.ScoreListBuffCommand(argtext)
-    Scripter.SkillCommand(argtext)
+    if (argtext == nil or argtext == "") then
+        argtext = ""
+        Scripter.ScoreExpCommand(argtext)
+        Scripter.ScoreListStatCommand(argtext)
+        Scripter.ScoreListActionCommand(argtext)
+        Scripter.ScoreListBuffCommand(argtext)
+        Scripter.SkillCommand(argtext)
+    else
+        Scripter.ScoreListStatCommand(argtext)
+        Scripter.SkillCommand(argtext)
+        Scripter.ScoreListCraftCommand(argtext)
+    end
 end
 
 function Scripter.ScoreListBuffCommand(argtext)
@@ -2710,12 +2924,12 @@ function Scripter.SkillCommand(argtext)
             if v ~= nil then
                 if v > 0 then
                     local text = k .. ": " .. v .. " Points"
-                    local per = Scripter.savedVariables.userdata_skill_rate[k]
-                    local rate = Scripter.savedVariables.userdata_stat[k]
-                    if per ~= nil then
+                    local per = Scripter.GetSkillPercentage(k)
+                    local rate = Scripter.GetAbilityRate(k)
+                    if per ~= 0 then
                         text = text .. " " .. string.format("%7.2f", per) .. "%"
                     end
-                    if rate ~= nil then
+                    if rate ~= 0 then
                         text = text .. " (" .. string.format("%7.2f", rate) .. "/min)"
                     end
                     print(text)
@@ -2723,12 +2937,14 @@ function Scripter.SkillCommand(argtext)
             end
         end
     else
-        local data = Scripter.GetPlayerSkillData(argtext)
-        if data == nil then
+        local charName = Scripter.GetPlayerSkillName(argtext)
+        if charName == nil then
             print("Scripter: No skill info available for user '" .. Scripter.HighlightText(argtext) .. "'.")
             return
         end
 
+	print("Skills (" .. charName .. "):")
+        local data = Scripter.GetPlayerSkillData(charName)
         for k,v in pairs(data) do
             print(k .. ": " .. v .. " Points")
         end
@@ -2792,13 +3008,14 @@ function Scripter.ScoreListCraftCommand(argtext)
             Scripter.PrintCharacterCraftInfo(v)
         end
     else
-        local data = Scripter.GetPlayerCraftData(argtext)
+        local charName = Scripter.GetPlayerCraftName(argtext)
         if data == nil then
             print("Scripter: No craft info available for user '" .. Scripter.HighlightText(argtext) .. "'.")
             return
         end
 
-        print("Craft traits (" .. argtext .. "):")
+        print("Craft traits (" .. charName .. "):")
+        local data = Scripter.GetPlayerCraftData(charName)
         for k,v in pairs(data) do
 	    print("(" .. k .. ") " .. v)
         end
@@ -2817,6 +3034,7 @@ Scripter.statCommands = {
 
 function Scripter.ScoreCommand(argtext)
     Scripter.PreCommandCheck()
+
     local args = {strsplit(" ", argtext)}
     if next(args) == nil then
         Scripter.ScoreSummaryCommand()
@@ -2853,11 +3071,13 @@ end
 
 function Scripter.ResetVendorCommand(argtext)
     Scripter.savedVariables.userdata_vendor = {}
+    Scripter.savedVariables.userdata_vendor_loc = {}
     print("Scripter: Vendor information has been cleared.")
 end
 
 function Scripter.ZoneResetCommand()
     Scripter.savedVariables.userdata_zone = {}
+    Scripter.savedVariables.userdata_zone_loc = {}
     print("Scripter: Cleared stored location information.")
 end
 
@@ -3163,31 +3383,6 @@ function Scripter.MSync_SendEvent(displayName, isManual)
     end
 end
 
--- function Scripter.MSync_ResetEvent()
---     local stamp = GetTimerOffset()
---     for k,v in pairs(Scripter.savedVariables.userdata_sync) do
---         if v > stamp then
---             Scripter.savedVariables.userdata_sync[k] = stamp
---             stamp = stamp + 5
---         end
---     end
--- end
-
--- function Scripter.CSync_SendEvent(displayName)
---     local data = ""
---     local skills = Scripter.GetPlayerSkills()
--- 
---     for k,v in pairs(skills) do
---         data = data .. ":" .. v .. " " .. k
---     end
---     for k,v in pairs(Scripter.savedVariables.userdata_stat) do
---       data = data .. ":" .. v .. " " .. k
---     end
--- 
---     -- prep whisper
---     CHAT_SYSTEM:StartTextEntry("/w " .. displayName .. " .." .. data)
--- end
-
 function Scripter.MSync_UpdateEvent()
     local now = GetTimeStamp()
     for k,v in pairs(Scripter.savedVariables.userdata_sync) do
@@ -3315,7 +3510,13 @@ function Scripter.ListVendorCommand(argtext)
     print("Vendors:")
     for k,v in pairs(Scripter.savedVariables.userdata_vendor) do
         if v == subdesc then
-            print(k .. " [" .. v .. "]")
+            local loc = Scripter.savedVariables.userdata_vendor_loc[k]
+            local text = Scripter.HighlightText(k) .. " in " .. v
+	    if loc ~= nil then 
+                text = text .. " " .. Scripter.GetDistanceText(loc.x, loc.y)
+            end
+            text = text .. "."
+            print(text)
 	    found = true
 	end
     end
@@ -3327,7 +3528,7 @@ end
 function Scripter.FilterVendorCommand(argtext)
     print("Vendor (" .. argtext .. "):")
     for k,v in pairs(Scripter.savedVariables.userdata_vendor) do
-        if (string.match(k, argtext) ~= nil or string.match(v, argtext) ~= nil) then
+        if (strifind(k, argtext) or strifind(v, argtext)) then
             print(k .. " [" .. v .. "]")
 	end
     end
@@ -3376,35 +3577,157 @@ function Scripter.LeaveGroupCommand(argtext)
 --    print("You disband from the group.")
 end
 
+function Scripter.FormatCordinate(cord)
+   return zo_round(cord * 10000) / 10000
+end
+
+function Scripter.CordinateToMeters(cord)
+    return zo_round(300 * cord)
+end
+
+function Scripter.CordinateDistance(x, y)
+    local plrX, plrY = GetMapPlayerPosition('player')
+    local locX = Scripter.FormatCordinate(plrX)
+    local locY = Scripter.FormatCordinate(plrY)
+
+    local distX = zo_abs(Scripter.CordinateToMeters(x - plrX)) 
+    local distY = zo_abs(Scripter.CordinateToMeters(y - plrY)) 
+    return (distX + distY) / 2
+end
+
+function Scripter.CordinateDirection(x, y)
+    local plrX, plrY = GetMapPlayerPosition('player')
+    if (plrX == nil or plrY == nil) then return "" end
+    local locX = Scripter.CordinateToMeters(plrX)
+    local locY = Scripter.CordinateToMeters(plrY)
+
+    x = Scripter.CordinateToMeters(x)
+    y = Scripter.CordinateToMeters(y)
+
+    local east = false
+    local north = false
+    local west = false
+    local south = false
+    if locX < x then east = true end
+    if locY > y then north = true end
+    if locX > x then west = true end
+    if locY < y then south = true end
+
+    if (north == true and east == true) then 
+        return "NE"
+    elseif (north == true and west == true) then
+        return "NW"
+    elseif (south == true and east == true) then
+        return "SE"
+    elseif (south == true and west == true) then
+        return "SW"
+    elseif north == true then
+        return "N"
+    elseif south == true then
+        return "S"
+    elseif east == true then
+        return "E"
+    elseif west == true then
+        return "W"
+    end
+
+    return ""
+end
+
+function Scripter.GetCordinateText(x, y)
+    return Scripter.CordinateToMeters(x) .. ":" .. Scripter.CordinateToMeters(y)
+end
+
+function Scripter.GetDistanceText(x, y)
+    if (x == nil or y == nil) then return "n/a" end
+
+    local dist = Scripter.CordinateDistance(x,y)
+    if dist == 0 then return "" end
+
+    local text = dist .. "m " .. Scripter.CordinateDirection(x,y)
+    text = text .. " " .. Scripter.GetCordinateText(x,y)
+    text = " (" .. text .. ")" 
+    return text
+end
+
 function Scripter.ZoneInfoCommand()
-    local x, y = GetMapPlayerPosition('player')
-    local locX = zo_round(x*1000) / 1000
-    local locY = zo_round(y*1000) / 1000
-    local zone, subzone = Scripter.GetZoneAndSubzone()
-    local subdesc = GetMapName()
-    -- show x,y grid map position
-    print("Location: " .. subdesc .. " of " .. zone .. " [" .. locX .. "," .. locY .. "]")
+--    local x, y = GetMapPlayerPosition('player')
+--    local zone, subzone = Scripter.GetZoneAndSubzone()
+--    local subdesc = GetMapName()
+--    print("Location: " .. Scripter.HighlightText(subdesc) .. " of " .. zone .. " (" .. Scripter.GetCordinateText(x,y) .. ")")
+
+    local loc = Scripter.GetPlayerLocation()
+    print("Location: " .. Scripter.HighlightText(loc.area) .. " of " .. loc.zone .. " (" .. Scripter.GetCordinateText(loc.x, loc.y) .. ")")
+    local zoneIndex, poiIndex = GetCurrentSubZonePOIIndices()
+    if (zoneIndex ~= nil and poiIndex ~= nil) then
+        local text = Scripter.GetPOIText(zoneIndex, i, false)
+        if text ~= "" then print("- " .. text) end
+    end
 end
 
 function Scripter.ZoneFilterCommand(argtext)
     print("Zones (" .. argtext .. "):")
     for k,v in pairs(Scripter.savedVariables.userdata_zone) do
-        if (string.match(k, argtext) ~= nil or string.match(v, argtext) ~= nil) then
+        if (strifind(k, argtext) or strifind(v, argtext)) then
             print("Location: " .. k .. " of " .. v .. ".")
         end
     end
 end
 
-function Scripter.ZoneListCommand(argtext)
+function Scripter.ZoneListAllCommand(argtext)
     print("Zones:")
     for k,v in pairs(Scripter.savedVariables.userdata_zone) do
-        print("Location: " .. k .. " of " .. v .. ".")
+        local text = "Location: " .. Scripter.HighlightText(k) .. " of " .. v .. "."
+        print(text)
+    end
+end
+
+function Scripter.GetPOIText(zoneIndex, poiIndex, showLocation)
+    local x,y = GetPOIMapInfo(zoneIndex, poiIndex)
+    local objectiveName, objectiveLevel, startDescription, finishedDescription = GetPOIInfo(zoneIndex, poiIndex)
+    if (x == nil or y == nil or objectiveName == "") then return "" end
+    local dungeon = false
+    local wayshrine = false
+    local text
+
+    if (IsPOIPublicDungeon(zoneIndex, poiIndex) == true or IsPOIGroupDungeon(zoneIndex, poiIndex)) then dungeon = true end
+    if IsPOIWayshrine(zoneIndex, poiIndex) then wayshrine = true end
+
+    text = Scripter.HighlightText(objectiveName)
+    if objectiveLevel ~= 0 then 
+        text = text .. " Lv " .. objectiveLevel
+    end
+    if startDescription ~= "" then 
+       text = text .. " - " .. startDescription
+    end
+    if dungeon == true then text = text .. " [dungeon]" end
+    if wayshrine == true then text = text .. " [wayshrine]" end
+    if (showLocation == nil or showLocation == true) then
+       text = text .. " " .. Scripter.GetDistanceText(x, y) 
+       --text = text .. " [" .. Scripter.GetDistanceText(x, y) .. " " .. Scripter.GetCordinateText(x, y) .. "]"
+    end
+
+    return text
+end
+
+function Scripter.ZoneListPOICommand(argtext)
+    local loc = Scripter.GetPlayerLocation()
+    local zoneIndex, poiIndex = GetCurrentSubZonePOIIndices()
+    local loc_max = GetNumPOIs(zoneIndex)
+
+    print("Locations (" .. loc.zone .. "):")
+    if zoneIndex == nil then return end
+
+    for i = 1, loc_max, 1 do
+        local text = Scripter.GetPOIText(zoneIndex, i, false)
+        if text ~= "" then print(text) end
     end
 end
 
 Scripter.zoneCommands = {
-    ["/list"] = Scripter.ZoneListCommand,
+    ["/area"] = Scripter.ZoneListPOICommand,
     ["/clear"] = Scripter.ZoneResetCommand,
+    ["/list"] = Scripter.ZoneListAllCommand,
 }
 
 function Scripter.ZoneCommand(argtext)
@@ -3424,42 +3747,108 @@ function Scripter.ZoneCommand(argtext)
     zcommand(Scripter.extractstr(args,2))
 end
 
-function Scripter.QuestCommand(argtext)
-    Scripter.PreCommandCheck()
-
-    if (argtext == nil or argtext == "") then
-        print("Quests:")
-        local quests = Scripter.GetQuestInfo()
+-- GetJournalQuestType
+function Scripter.QuestListAreaCommand(argtext)
+    local loc = Scripter.GetPlayerLocation()
+    print("Quests (" .. Scripter.HighlightText(loc.area) .. " of " .. loc.zone .. "):")
+    local quests = Scripter.GetQuestInfo()
 	local s_quest = {}
-        for k,v in pairs(quests) do
-            if v.isCompleted == false then
+    for k,v in pairs(quests) do
+        local isArea = IsJournalQuestInCurrentMapZone(v.questIndex)
+        if (v.isCompleted == false and isArea) then
+           local text = v.name
 	       if v.zoneName ~= "" then
-                   print(v.name .. " (Lv " .. v.questLevel .. ")")
-               else
-                   print(v.name .. " [" .. v.zoneName .. " (Lv " .. v.questLevel .. ")]")
-               end
-               print("- " .. v.bgText)
+               text = text .. " (Lv " .. v.questLevel .. ")"
+           else
+               text = text .. " [" .. v.zoneName .. " (Lv " .. v.questLevel .. ")]"
+           end
+           print(text)
+           print("- " .. v.bgText)
+
+           if (v.zoneIndex ~= nil and v.poiIndex ~= nil) then
+              text = Scripter.GetPOIText(v.zoneIndex, v.poiIndex, true)
+              if text ~= "" then print("- " .. text) end
+           end
+
 	       -- quest key:name val:zone
 	       local zoneName = v.zoneName
 	       if zoneName == "" then
-                   zoneName = "Global"
+               zoneName = "Global"
 	       end
-               s_quest[v.name] = zoneName
-            end
+           s_quest[v.name] = zoneName
         end
-        Scripter.savedVariables.userdata_quest = s_quest
-    else
-        local data = Scripter.GetPlayerQuestData(argtext)
-        if data == nil then
-            print("Scripter: No quest info available for user '" .. Scripter.HighlightText(argtext) .. "'.")
-            return
-        end
+    end
+end
 
-        print("Quests (" .. argtext .. "):")
-        for k,v in pairs(data) do
-            if v == "" then v = "Global" end
-	    print(k .. " [" .. v .. "]") 
+function Scripter.QuestListAllCommand(argtext)
+    print("Quests:")
+    local quests = Scripter.GetQuestInfo()
+	local s_quest = {}
+    for k,v in pairs(quests) do
+        if v.isCompleted == false then
+           local text = v.name
+	       if v.zoneName ~= "" then
+               text = text .. " (Lv " .. v.questLevel .. ")"
+           else
+               text = text .. " [" .. v.zoneName .. " (Lv " .. v.questLevel .. ")]"
+           end
+           print(text)
+           print("- " .. v.bgText)
+
+           if (v.zoneIndex ~= nil and v.poiIndex ~= nil) then
+              local isArea = IsJournalQuestInCurrentMapZone(v.questIndex)
+              text = Scripter.GetPOIText(v.zoneIndex, v.poiIndex, isArea)
+              if text ~= "" then print("- " .. text) end
+           end
+
+           -- quest key:name val:zone
+           local zoneName = v.zoneName
+           if zoneName == "" then
+               zoneName = "Global"
+           end
+           s_quest[v.name] = zoneName
         end
+    end
+    Scripter.savedVariables.userdata_quest = s_quest
+end
+
+Scripter.questCommands = {
+    ["/list"] = Scripter.QuestListAllCommand,
+}
+function Scripter.QuestCommand(argtext)
+    Scripter.PreCommandCheck()
+
+    local args = {strsplit(" ", argtext)}
+    if next(args) == nil then
+        Scripter.QuestListAreaCommand()
+        return
+    end
+
+    local qcommand = Scripter.questCommands[args[1]]
+    if not qcommand then
+        Scripter.QuestListCharacterCommand(argtext)
+        return
+    end
+
+    qcommand(Scripter.extractstr(args, 2))
+end
+
+function Scripter.QuestListCharacterCommand(argtext)
+    if (argtext == nil or argtext == "") then
+        Scripter.QuestSlashCommandHelp()
+    end
+
+    local charName = Scripter.GetPlayerQuestName(argtext)
+    if charName == nil then
+        print("Scripter: No quest info available for user '" .. Scripter.HighlightText(argtext) .. "'.")
+        return
+    end
+
+    print("Quests (" .. charName .. "):")
+    local data = Scripter.GetPlayerQuestData(charName)
+    for k,v in pairs(data) do
+        if v == "" then v = "Global" end
+	    print(k .. " [" .. v .. "]") 
     end
 end
 
@@ -3517,13 +3906,14 @@ function Scripter.ListWornInventoryCommand(argtext)
            end
        end
     else
-        local data = Scripter.GetPlayerItemData(argtext)
-        if data == nil then
+        local charName = Scripter.GetPlayerItemName(argtext)
+        if charName == nil then
             print("Scripter: No equipment info available for user '" .. Scripter.HighlightText(argtext) .. "'.")
             return
         end
 
-        print("Worn (" .. argtext .. "):")
+        print("Worn (" .. charName .. "):")
+        local data = Scripter.GetPlayerItemData(charName)
         for k,v in pairs(data) do
 	    local item = {}
 	    item['name'] = k
@@ -3764,11 +4154,11 @@ function Scripter.NewCombatEvent( eventCode , result , isError , abilityName, ab
     if sourceName == targetName then
 			if ( result == ACTION_RESULT_HEAL or result == ACTION_RESULT_CRITICAL_HEAL or result == ACTION_RESULT_HOT_TICK or result == ACTION_RESULT_HOT_TICK_CRITICAL ) then
           if hitValue ~= 0 and abilityName ~= "" then
-    			    Scripter.notifyAction("+" .. hitValue .. " " .. abilityName .. " (Heal)")
+    			    Scripter.NotifyCharacterAction(OPT_NOTIFY_COMBAT, "+" .. hitValue .. " " .. abilityName .. " (Heal)")
           end
     elseif ( result == ACTION_RESULT_IMMUNE or result == ACTION_RESULT_DODGED or result == ACTION_RESULT_REFLECTED or result == ACTION_RESULT_RESIST or result == ACTION_RESULT_INTERRUPT or result == ACTION_RESULT_PARRIED or result == ACTION_RESULT_MISS or result == ACTION_RESULT_DAMAGE_SHIELDED or result == ACTION_RESULT_ABSORBED ) then
           if hitValue ~= 0 and abilityName ~= "" then
-			        Scripter.notifyAction("+" .. hitValue .. " " .. abilityName .. " (Immune)")
+			        Scripter.NotifyCharacterAction(OPT_NOTIFY_COMBAT, "+" .. hitValue .. " " .. abilityName .. " (Immune)")
           end
 		    end
 	else
@@ -3779,8 +4169,8 @@ function Scripter.NewCombatEvent( eventCode , result , isError , abilityName, ab
         end
 
 --        if result == ACTION_RESULT_KILLING_BLOW then
---	        Scripter.notifyAction(sourceName .. " incapacitate " .. targetName " with " .. hitValue .. " points of '" .. abilityName .. "' " .. dmg_type .. " damage.")
---	        Scripter.addAbilityRate("Kills", hitValue)
+--	        Scripter.NotifyCharacterAction(sourceName .. " incapacitate " .. targetName " with " .. hitValue .. " points of '" .. abilityName .. "' " .. dmg_type .. " damage.")
+--	        Scripter.AddAbilityRate("Kills", hitValue)
 --        end
 
       targetName = Scripter.FormatItemName(targetName)
@@ -3794,18 +4184,16 @@ function Scripter.NewCombatEvent( eventCode , result , isError , abilityName, ab
             elseif ( result == ACTION_RESULT_DOT_TICK or result == ACTION_RESULT_DOT_TICK_CRITICAL ) then
                 action = "invoke"
             end
-            if Settings:GetValue(OPT_NOTIFY_COMBAT) == true then
-                if powerType == 0 then
-                        Scripter.notifyAction(sourceName .. " " .. action .. " " .. hitValue .. " points of '" .. Scripter.HighlightText(abilityName) .. "' " .. dmg_type .. " damage on " .. targetName .. ".")
-                elseif powerType == 6 then
-                        Scripter.notifyAction(sourceName .. " " .. action .. " " .. hitValue .. " points of '" .. Scripter.HighlightText(abilityName) .. "' " .. dmg_type .. " combat damage on " .. targetName .. ".")
-                elseif powerType == 10 then
-                        Scripter.notifyAction(sourceName .. " " .. action .. " " .. hitValue .. " points of '" .. Scripter.HighlightText(abilityName) .. "' " .. dmg_type .. " ultimate damage on " .. targetName .. ".")
-                end
+            if powerType == 0 then
+                    Scripter.NotifyCharacterAction(OPT_NOTIFY_COMBAT, sourceName .. " " .. action .. " " .. hitValue .. " points of '" .. Scripter.HighlightText(abilityName) .. "' " .. dmg_type .. " damage on " .. targetName .. ".")
+            elseif powerType == 6 then
+                    Scripter.NotifyCharacterAction(OPT_NOTIFY_COMBAT, sourceName .. " " .. action .. " " .. hitValue .. " points of '" .. Scripter.HighlightText(abilityName) .. "' " .. dmg_type .. " combat damage on " .. targetName .. ".")
+            elseif powerType == 10 then
+                    Scripter.NotifyCharacterAction(OPT_NOTIFY_COMBAT, sourceName .. " " .. action .. " " .. hitValue .. " points of '" .. Scripter.HighlightText(abilityName) .. "' " .. dmg_type .. " ultimate damage on " .. targetName .. ".")
             end
 	end
 
-	Scripter.addAbilityRate(abilityName, hitValue)
+	Scripter.AddAbilityRate(abilityName, hitValue)
 end
 
 function Scripter.GetReasonLabel(reason)
@@ -3867,23 +4255,24 @@ function Scripter.NewSkillEvent(eventCode, skillCategory, skillType, reason, ran
     local diff = currentXP - previousXP
     local display = ""
 
-	local lastRankXP, nextRankXP = GetSkillLineXPInfo(skillCategory, skillType)
-	local curLevelXP = nextRankXP - lastRankXP
-	local levelProg = currentXP - lastRankXP
-    local percent = string.format( "%.2f" , (levelProg/curLevelXP)*100)
-	skillName = GetSkillLineInfo(skillCategory, skillType)
+    local lastRankXP, nextRankXP = GetSkillLineXPInfo(skillCategory, skillType)
+    local curLevelXP = nextRankXP - lastRankXP
+    local levelProg = currentXP - lastRankXP
+    local percent = (levelProg/curLevelXP)*100
+    skillName = GetSkillLineInfo(skillCategory, skillType)
 
     if diff == 0 then
         return
     end
 
     local src = Scripter.GetReasonLabel(reason)
-    if Settings:GetValue(OPT_NOTIFY_COMBAT) == true then
-        display = "+" .. diff .. " " .. skillName ..  " (" .. src .. ") " .. string.format("%7.2f", percent) .. "%" 
-        Scripter.notifyAction(display)
+    display = "+" .. diff .. " " .. skillName ..  " (" .. src .. ") "
+	if percent ~= 0 then
+        display = display .. string.format("%7.2f", percent) .. "%" 
     end
-    Scripter.addAbilityRate(skillName, diff)
-    Scripter.savedVariables.userdata_skill_rate[skillName] = percent;
+    Scripter.NotifyCharacterAction(OPT_NOTIFY_COMBAT, display)
+    Scripter.AddAbilityRate(skillName, diff)
+    Scripter.SetSkillPercentage(skillName, percent)
 end
 
 function Scripter.NewExpEvent( eventCode, unitTag, currentExp, maxExp, reason )
@@ -3896,10 +4285,8 @@ function Scripter.NewExpEvent( eventCode, unitTag, currentExp, maxExp, reason )
     local isveteran = ( eventCode == EVENT_VETERAN_POINTS_UPDATE ) and true or false
     
     if reason == PROGRESS_REASON_KILL then
-        if Settings:GetValue(OPT_NOTIFY_COMBAT) == true then
-            Scripter.notifyAction("The " .. victim .. " is incapacitated.")
-        end
-        Scripter.addAbilityRate("Kills", 1)
+        Scripter.NotifyCharacterAction(OPT_NOTIFY_COMBAT, "The " .. victim .. " is incapacitated.")
+        Scripter.AddAbilityRate("Kills", 1)
     end
     
     local exp = current_exp
@@ -3918,14 +4305,12 @@ function Scripter.NewExpEvent( eventCode, unitTag, currentExp, maxExp, reason )
                 slay_cnt = per_str .. "% - x" .. math.ceil((maxExp - currentExp) / diff) .. " to level"
             end
 
-            if Settings:GetValue(OPT_NOTIFY_COMBAT) == true then
-                if isveteran == true then
-                    Scripter.notifyAction("+" .. diff .. " VXP Points (" .. src .. ") " .. slay_cnt)
-                else
-                    Scripter.notifyAction("+" .. diff .. " XP Points (" .. src .. ") " .. slay_cnt)
-                end
+            if isveteran == true then
+                Scripter.NotifyCharacterAction(OPT_NOTIFY_COMBAT, "+" .. diff .. " VXP Points (" .. src .. ") " .. slay_cnt)
+            else
+                Scripter.NotifyCharacterAction(OPT_NOTIFY_COMBAT, "+" .. diff .. " XP Points (" .. src .. ") " .. slay_cnt)
             end
-            Scripter.addAbilityRate("Experience", diff)
+            Scripter.AddAbilityRate("Experience", diff)
         end
     end
     if isveteran == true then
@@ -3935,25 +4320,16 @@ function Scripter.NewExpEvent( eventCode, unitTag, currentExp, maxExp, reason )
     end
 end
 
-function Scripter.notifyLore(x, y, categoryIndex, collectionIndex, bookIndex)
-    if Settings:GetValue(OPT_NOTIFY_BOOK) == false then return end
-
+function Scripter.notifyLore(categoryIndex, collectionIndex, bookIndex)
+    --local x, y = GetMapPlayerPosition("player")
     local zone, subzone = Scripter.GetZoneAndSubzone()
-    local locX = zo_round(x*1000) / 1000
-    local locY = zo_round(y*1000) / 1000
     local categoryName, numCollections = GetLoreCategoryInfo(categoryIndex)
     local title, icon, known = GetLoreBookInfo(categoryIndex, collectionIndex, bookIndex)
     local text = ""
 
-
     if title == nil then return end
     text = "Obtained '" .. Scripter.HighlightText(title) .. "'.";
---     if not InvalidPoint(x, y) then   --for unknown reason it sometime fails
--- 	    text = text .. " @ " .. locX .. "," .. locY
---     end
-    Scripter.notifyAction(text)
-
---	Scripter.savedVariables.lore[title] = {x, y}
+    Scripter.NotifyCharacterAction(OPT_NOTIFY_BOOK, text)
 end
 
 function Scripter.GetGameStageTime(stage)
@@ -4125,14 +4501,12 @@ function Scripter.NewLoreBookEvent(eventCode, categoryIndex, collectionIndex, bo
     if categoryIndex ~= 1 then return end
     Scripter.PrintDebug("NewLoreBookEvent")
 
-    local x, y = GetMapPlayerPosition("player")
     if (x == nil or y == nil) then return end
+    local locX = Scripter.FormatCordinate(x)
+    local locY = Scripter.FormatCordinate(y)
   
-    local locX = zo_round(x*1000) / 1000
-    local locY = zo_round(y*1000) / 1000
-  
-    Scripter.addAbilityRate("Lore", 1)
-    Scripter.notifyLore(locX, locY, categoryIndex, collectionIndex, bookIndex)
+    Scripter.AddAbilityRate("Lore", 1)
+    Scripter.notifyLore(categoryIndex, collectionIndex, bookIndex)
 end
 
 function Scripter.UpdateMoneyEvent()
@@ -4144,16 +4518,14 @@ function Scripter.UpdateMoneyEvent()
     -- reset temp gain/loss
     Scripter.savedVariables.usertemp_money = 0
 
-    Scripter.addAbilityRate("Gold", diff)
-    if Settings:GetValue(OPT_NOTIFY_MONEY) == true then
-        if diff > 0 then
-            local per = 100 / total * diff 
-            Scripter.notifyAction("You gained " .. diff .. " gold. (" .. total .. " total " .. string.format("%7.2f", per) .. "%+)")
-        elseif diff < 0 then
-            diff = diff * -1
-            local per = 100 / total * diff 
-            Scripter.notifyAction("You spent " .. diff .. " gold. (" .. total .. " total " .. string.format("%7.2f", per) .. "%-)")
-        end
+    Scripter.AddAbilityRate("Gold", diff)
+    if diff > 0 then
+        local per = 100 / total * diff 
+        Scripter.NotifyCharacterAction(OPT_NOTIFY_MONEY, "You gained " .. diff .. " gold. (" .. total .. " total " .. string.format("%7.2f", per) .. "%+)")
+    elseif diff < 0 then
+        diff = diff * -1
+        local per = 100 / total * diff 
+        Scripter.NotifyCharacterAction(OPT_NOTIFY_MONEY, "You spent " .. diff .. " gold. (" .. total .. " total " .. string.format("%7.2f", per) .. "%-)")
     end
 end
 
@@ -4337,7 +4709,7 @@ function Scripter.DeleteMailCommand(argtext)
         return
     end
 
-    Scripter.DeleteGameMail(mailId, false)
+    Scripter.DeleteGameMail(mailId)
 --    ReadMail(mailId) -- mark as read
 --    DeleteMail(mailId, false)
     Scripter.savedVariables.usertemp_mail[argtext] = nil
@@ -4602,11 +4974,21 @@ function Scripter.AFKCommand(argtext)
     acommand(Scripter.extractstr(args,2))
 end
 
+function Scripter.MinimizeCommand(argtext)
+    if CHAT_SYSTEM:IsMinimized() == true then return end
+    CHAT_SYSTEM:Minimize()
+end
+
+function Scripter.ClearCommand()
+    Scripter.ClearChatWindow()
+end
+
 EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_ADD_ON_LOADED, Scripter.OnAddOnLoaded)
 
 -- Wykkyd framework macro integration
 if WF_SlashCommand ~= nil then
     WF_SlashCommand("away", Scripter.AFKCommand)
+    WF_SlashCommand("clear", Scripter.ClearCommand)
     WF_SlashCommand("cmd", Scripter.CommandCommand)
     WF_SlashCommand("keybind", Scripter.KeybindCommand)
     WF_SlashCommand("filter", Scripter.FilterCommand)
@@ -4616,6 +4998,7 @@ if WF_SlashCommand ~= nil then
     WF_SlashCommand("loc", Scripter.ZoneCommand)
     WF_SlashCommand("log", Scripter.LogCommand)
     WF_SlashCommand("mail", Scripter.MailCommand)
+    WF_SlashCommand("min", Scripter.MinimizeCommand)
     WF_SlashCommand("sguild", Scripter.GuildCommand)
     WF_SlashCommand("sgroup", Scripter.PartyCommand)
     WF_SlashCommand("quest", Scripter.QuestCommand)
@@ -4630,6 +5013,7 @@ if WF_SlashCommand ~= nil then
     WF_SlashCommand("vendor", Scripter.VendorCommand)
 else
     SLASH_COMMANDS["/away"] = Scripter.AFKCommand
+    SLASH_COMMANDS["/clear"] = Scripter.ClearCommand
     SLASH_COMMANDS["/cmd"] = Scripter.CommandCommand
     SLASH_COMMANDS["/keybind"] = Scripter.KeybindCommand
     SLASH_COMMANDS["/filter"] = Scripter.FilterCommand
@@ -4639,6 +5023,7 @@ else
     SLASH_COMMANDS["/loc"] = Scripter.ZoneCommand
     SLASH_COMMANDS["/log"] = Scripter.LogCommand
     SLASH_COMMANDS["/mail"] = Scripter.MailCommand
+    SLASH_COMMANDS["/min"] = Scripter.MinimizeCommand
     SLASH_COMMANDS["/sguild"] = Scripter.GuildCommand
     SLASH_COMMANDS["/sgroup"] = Scripter.PartyCommand
     SLASH_COMMANDS["/quest"] = Scripter.QuestCommand
@@ -4675,3 +5060,22 @@ EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_PLAYER_ACTIVATED, Intro)
 function ScripterSL_OnInitialized()
     EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_ADD_ON_LOADED, function(...) ScripterSL:EVENT_ADD_ON_LOADED(...) end )	
 end
+
+-- function MAIL_INBOX:Delete()
+--     if self.mailId then
+--         if self:IsMailDeletable() then
+--             local attachments, gold = GetMailAttachmentInfo(self.mailId)
+-- 			
+--             self.pendingDelete = true
+--             if attachments > 0 and gold > 0 then
+--                 ZO_Dialogs_ShowDialog("DELETE_MAIL_ATTACHMENTS_AND_MONEY")
+--             elseif attachments > 0 then
+--                 ZO_Dialogs_ShowDialog("DELETE_MAIL_ATTACHMENTS")
+--             elseif gold > 0 then
+--                 ZO_Dialogs_ShowDialog("DELETE_MAIL_MONEY")
+--             else
+--                 self:ConfirmDelete()
+--             end
+--         end
+--     end
+-- end

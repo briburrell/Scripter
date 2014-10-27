@@ -1,5 +1,15 @@
-[10/24/2014] Release: v1.99 submitted
-[10/24/2014] Fix: Skills are now properly synchronized.
+[10/26/2014] Release: v1.99 submitted
+[10/26/2014 #554] New: /clear - Clear the chat window.
+[10/26/2014 #555] New: /loc /area - Show points of interest for zone.
+[10/26/2014 #555] Renew: /quest [/list] - Show nearby or entire zone's quests.
+[10/25/2014 #538] New: Config option to retain focus in chat window after cmd.
+[10/25/2014 #554] New: /min - minimize the chat window
+[10/25/2014 #555] Renew: /vendor - Show relative distance to area vendors.
+[10/25/2014 #553] New: Config option to suppress 'misc notifications'.
+[10/25/2014 #538] Display command feedback in current chat tab.
+[10/25/2014 #1100] Case insensitive keyword matching.
+[10/25/2014 #544] Independant character stats.
+[10/24/2014 #1114] Fix: Skills are now properly synchronized.
 [10/24/2014] Release: v1.98 submitted
 [10/24/2014] Fix: resolved an outgoing mail issue
 [10/24/2014] Release: v1.97 submitted
