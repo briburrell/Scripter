@@ -1,15 +1,15 @@
 
 The Scripter addon provides a text UI to common ESO operations and provides ongoing notification of game events. See the Commands section below for the full list of commands available.
 
- Source Code: https://github.com/neonatura/Scripter.git
- Release Download: http://www.esoui.com/downloads/info793-Scripter-TextUINotifications.html
+#### Source Code: https://github.com/neonatura/Scripter.git
+#### Release Download: http://www.esoui.com/downloads/info793-Scripter-TextUINotifications.html
 
 Functions
 =========
 
 Create and execute LUA functions from inside the game. Several examples and an easy to use interface makes a novice capable of running there own code.
 
- Reference: The [Scripting API](Scripting-API) provides a list of the core functions available.
+#### Reference: The [Scripting API](Scripting-API) provides a list of the core functions available.
 
 Triggers
 ========
