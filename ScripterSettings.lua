@@ -30,7 +30,7 @@ OPT_SYNC_DELETE = "sync_delete"
 OPT_SYNC_QUEST = "sync_quest"
 OPT_SYNC_SKILL = "sync_skill"
 OPT_SYNC_CRAFT = "sync_craft"
-OPT_CHAT_FONT = "chat_font"
+OPT_CHAT_FONT = "chat_font_name"
 OPT_CHAT_FONT_SIZE = "chat_font_size"
 
 local settings = { }
@@ -143,12 +143,27 @@ function ScripterSettings:GetOptions()
     return settings
 end
 
+function ScripterSettings:InitializeChatWindowFont()
+    -- set the default CHAT window font size. 
+    local font_type = self:GetValue(OPT_CHAT_FONT)
+    local font_size = self:GetValue(OPT_CHAT_FONT_SIZE)
+    -- chat history list
+    CHAT_SYSTEM:SetFontSize(tonumber(font_size))
+    -- entry textfield
+    font_size = font_size - 0.25
+    ZO_ChatWindowTextEntryEditBox:SetFont(string.format( "%s|%d|%s", 
+        self:GetFont(font_type), font_size, "soft-shadow-thin")); 
+    font_size = font_size - 0.25
+    ZO_ChatWindowTextEntryLabel:SetFont(string.format( "%s|%d|%s",
+        self:GetFont(font_type), font_size, "soft-shadow-thin")); 
+end
+
 function ScripterSettings:CreateOptionsMenu()
     local panel = {
         type = "panel",
         name = "Scripter",
         author = "Neo Natura",
-        version = "1.91",
+        version = scripterVersion,
         slashCommand = "/sconfig",
         registerForRefresh = true
     }
@@ -249,9 +264,9 @@ function ScripterSettings:CreateOptionsMenu()
             setFunc = function(value)
                 self:SetValue(OPT_NOTIFY_BG, value)
                 if value == true then
-                    ScripterLibGui.setBackgroundHidden(false)
+                    ScripterGui.setBackgroundHidden(false)
                 else
-                    ScripterLibGui.setBackgroundHidden(true)
+                    ScripterGui.setBackgroundHidden(true)
                 end
             end
         },
@@ -266,7 +281,7 @@ function ScripterSettings:CreateOptionsMenu()
             end,
             setFunc = function(value)
                 self:SetValue(OPT_NOTIFY_FADE_DELAY, value)
-		ScripterLibGui.setFadeDelay(value)
+		ScripterGui.setFadeDelay(value)
             end
         },
         [12] = {
@@ -280,7 +295,7 @@ function ScripterSettings:CreateOptionsMenu()
             end,
             setFunc = function(value)
                 self:SetValue(OPT_NOTIFY_MAX, value)
-		ScripterLibGui.setBufferMax()
+		ScripterGui.setBufferMax()
             end
         },
         [13] = {
@@ -293,7 +308,7 @@ function ScripterSettings:CreateOptionsMenu()
             end,
             setFunc = function(value)
                 self:SetValue(OPT_NOTIFY_FONT, value)
-                ScripterLibGui.setTextFont()
+                ScripterGui.setTextFont()
             end
         },
         [14] = {
@@ -307,7 +322,7 @@ function ScripterSettings:CreateOptionsMenu()
             end,
             setFunc = function(value)
                 self:SetValue(OPT_NOTIFY_FONT_SIZE, value)
-                ScripterLibGui.setTextFont()
+                ScripterGui.setTextFont()
             end
         },
         [15] = {
@@ -481,36 +496,25 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_CHAT_SUPPRESS, value)
             end
         },
---        [24] = {
---            type = "dropdown",
---            name = "Chat Window Text Font",
---            tooltip = settingsLabel[OPT_CHAT_FONT],
---	    choices = self:GetFontNames(),
---            getFunc = function() 
---	    	return self:GetValue(OPT_CHAT_FONT)
---            end,
---            setFunc = function(value)
---                self:SetValue(OPT_CHAT_FONT, value)
---            end
---        },
---        [25] = {
---            type = "slider",
---            name = "Chat Window Font Size",
---	    min = 6,
---            max = 24,
---            tooltip = settingsLabel[OPT_CHAT_FONT_SIZE],
---            getFunc = function() 
---	    	return self:GetValue(OPT_CHAT_FONT_SIZE)
---            end,
---            setFunc = function(value)
---                self:SetValue(OPT_CHAT_FONT_SIZE, value)
---            end
---        },
         [32] = {
+            type = "slider",
+            name = "Chat Window Font Size",
+	    min = 6,
+            max = 24,
+            tooltip = settingsLabel[OPT_CHAT_FONT_SIZE],
+            getFunc = function() 
+	    	return self:GetValue(OPT_CHAT_FONT_SIZE)
+            end,
+            setFunc = function(value)
+                self:SetValue(OPT_CHAT_FONT_SIZE, value)
+                self:InitializeChatWindowFont()
+            end
+        },
+        [33] = {
             type = "header",
             name = "Diagnostics",
         },
-        [33] = {
+        [34] = {
             type = "checkbox",
             name = "Debug Mode",
             tooltip = settingsLabel[OPT_DEBUG],

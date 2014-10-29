@@ -1,0 +1,47 @@
+<GuiXml>
+
+<Controls>
+<TopLevelControl name="ScripterNote" mouseEnabled="true" movable="true">
+
+<Dimensions x="100" y="40"/>
+<Anchor point="TOPLEFT"/>
+
+		<OnUpdate>
+		ScripterNoteUpdate()
+		</OnUpdate>
+		
+	<Controls>
+	<Control name="ScripterNotePanel">
+	<Dimensions x="200" y="400"/>
+	<Anchor point="TOPLEFT"/>
+	
+		<Controls>
+		<Backdrop name="ScripterNoteBG" inherits="ZO_ThinBackdrop">
+		<Anchor relativeTo="ScripterNotePanel" point="TOPLEFT" offsetX="20" offsetY="30"/>
+		<Dimensions x="200" y="400"/>
+		
+			<Controls>
+			<EditBox name="ScripterNoteEditBox" multiLine="true" maxInputCharacters="2048" inherits="ZO_DefaultEditMultiLineForBackdrop" text="test...">
+			<Anchor relativeTo="ScripterNoteBG" point="TOPLEFT" offsetX="5" offsetY="5"/>
+			<Dimensions x="190" y="390"/>
+			</EditBox>
+			</Controls>	
+			
+				
+			<Controls>
+			<Label name="ScripterNoteCorner" mouseEnabled="true" movable="true" font="ZoFontGameLargeBoldShadow" color="2F2C2D" wrapmode="ELLIPSIS" verticalAlignment="CENTER" text="x">
+			<Anchor relativeTo="ScripterNoteBG" point="BOTTOMRIGHT" offsetX="0" offsetY="2"/>
+			</Label>
+			</Controls>
+		
+		</Backdrop>
+		</Controls>
+	
+	</Control>
+	</Controls>
+	
+</TopLevelControl>
+</Controls>
+
+
+</GuiXml>

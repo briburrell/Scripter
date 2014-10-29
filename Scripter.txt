@@ -1,10 +1,10 @@
 ## Title: |c9966ffScripter|cffffff
-## Version: 1.99
+## Version: 2.00
 ## Author: Neo Natura
 ## APIVersion: 100009
 ## SavedVariables: Scripter_SavedVariables
 ## SavedVariables: ScripterSettings_SavedVariables
-## SavedVariables: ScripterLibGui_SavedVariables
+## SavedVariables: ScripterGui_SavedVariables
 ## OptionalDependsOn: LibAddonMenu-2.0
 lib/LibStub/LibStub.lua
 lib/LibAddonMenu-2.0/LibAddonMenu-2.0.lua
@@ -20,9 +20,14 @@ lib/LibAddonMenu-2.0/controls/editbox.lua
 lib/LibAddonMenu-2.0/controls/header.lua
 lib/LibAddonMenu-2.0/controls/slider.lua
 lib/LibAddonMenu-2.0/controls/texture.lua
+lib/LibDataBlock/LibDataBlock-1.0.lua
 
-ScripterLibGui.lua
+ScripterExec.lua
+ScripterGui.lua
 ScripterLibTrait.lua
+ScripterNote.lua
 Scripter.lua
-Scripter.xml
 ScripterSettings.lua
+
+ScripterGui.xml
+ScripterNote.xml

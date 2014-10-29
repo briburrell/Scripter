@@ -6,8 +6,11 @@ Scripter = {}
 local Scripter = Scripter
 local ScripterSL = ZO_Object:Subclass()
 Settings = nil
-local scripterVersion = 1.99
+scripterVersion = 2.0
 local authorName = "@mahnki"
+
+--local ScriptCommand = SLASH_COMMANDS["/script"]
+local ChatLogCommand = SLASH_COMMANDS["/chatlog"]
 
 -- Localize builtin functions we use 
 local ipairs = ipairs
@@ -40,12 +43,21 @@ local gameweek = {"Sundas","Morndas","Tirdas","Middas","Turdas","Fredas","Loreda
 -- Localize ESO API functions we use
 local d = d
 local strjoin = zo_strjoin
-local strsplit = zo_strsplit
 local GetNumActionLayers = GetNumActionLayers
 local GetActionLayerInfo = GetActionLayerInfo
 local GetActionLayerCategoryInfo = GetActionLayerCategoryInfo
 local GetActionInfo = GetActionInfo
 local GetActionIndicesFromName = GetActionIndicesFromName
+
+VAL_USERDATA_FUNC = "userdata_func"
+
+function SetScripterValue(token, value)
+    Scripter.savedVariables[token] = value
+end
+
+function GetScripterValue(token)
+    return Scripter.savedVariables[token]
+end
 
 function Scripter.InitChatSystem()
    local scrollbar = CHAT_SYSTEM["containers"][1]["scrollbar"]
@@ -57,49 +69,8 @@ function Scripter.InitChatSystem()
    end
 end
 
-function Scripter.ScrollChatToBottom()
-    if CHAT_SYSTEM == nil then return end
-    local buffer = CHAT_SYSTEM["containers"][1]["currentBuffer"]
-
-    if buffer ~= nil then
-        local max = buffer:GetNumHistoryLines()
-        local pos = buffer:GetScrollPosition()
-        buffer:MoveScrollPosition((max - pos) * -1)
-    else
-        local max = CHAT_SYSTEM:GetNumHistoryLines()
-        local pos = CHAT_SYSTEM:GetScrollPosition()
-        CHAT_SYSTEM:MoveScrollPosition((max - pos) * -1)
-    end
-end
-
 local function print(...)
-    if CHAT_SYSTEM == nil then return end
-
-    local buffer = CHAT_SYSTEM["containers"][1]["currentBuffer"]
-    if buffer ~= nil then
-       buffer:AddMessage("|cFFFFFF" .. strjoin("", ...))
---       Scripter.InitChatSystem()
---       Scripter.ScrollChatToBottom()
-    else
-       CHAT_SYSTEM:AddMessage("|cFFFFFF" .. strjoin("", ...))
-    end
-
-    CHAT_SYSTEM:AddMessage(nil)
-end
-
-function Scripter.ClearChatWindow()
-    if CHAT_SYSTEM == nil then return end
-    local buffer = CHAT_SYSTEM["containers"][1]["currentBuffer"]
-    if buffer ~= nil then
-       buffer:Clear()
-    else
-       CHAT_SYSTEM:Clear()
-    end
-end
-
-local function strifind(text, kwd)
-    if string.match(text:lower(), kwd:lower()) ~= nil then return true end
-    return false
+    si_chat_print(...)
 end
 
 local default_help_desc = {
@@ -109,9 +80,11 @@ local default_help_desc = {
     ["/cmd"] = "Display slash commands.",
     ["/eq"] = "Character inventory.",
     ["/friend"] = "Display contacts information.",
+    ["/func"] = "Manage in-game functions.",
     ["/junk"] = "Display the junk item list.",
     ["/keybind"] = "Setup key bindings.",
     ["/filter"] = "Manage chat filter.",
+    ["/func"] = "Execute and edit functions.",
     ["/invite"] = "Perform group invite.",
     ["/leave"] = "Perform group leave",
     ["/loc"] = "Character location information.",
@@ -146,6 +119,13 @@ local default_alias_cmd = {
     ["who"] = {"friend","/online"},
 }
 
+local default_functions = {
+    ["hello"] = "s_print('Hello world.')",
+    ["bluetext"] = "s_print(s_pr_clr(0,0,1) .. s_args)",
+    ["bluehello"] = "s_call('bluetext', 'Hello world.')",
+    ["realtime"] = "s_print('Earth Time: ' .. s_pr_date())",
+}
+
 Scripter.defaults = {
     ["bindings"] = {},
     ["autoSets"] = {},
@@ -168,6 +148,7 @@ Scripter.defaults = {
     ["buff"] = {},
     ["slot"] = {},
     ["usertemp_llogin"] = nil,
+    ["usertemp_login_stamp"] = 0,
     ["usertemp_mail"] = {},
     ["usertemp_money"] = 0,
     -- persistent time saved information.
@@ -207,6 +188,8 @@ Scripter.defaults = {
     ["userdata_skill_percent"] = {},
     ["userdata_sync"] = {},
     ["userdata_trait"] = {},
+    ["userdata_func"] = default_functions,
+    ["userdata_db"] = {},
     -- persistent character attribute information
     ["chardata_attr"] = {},
     ["chardata_item_worn"] = {},
@@ -803,7 +786,7 @@ function Scripter.AFKWake()
     if Scripter.isPlayerAfk() == false then return end
 
     Scripter.ResetAfkMode()
-    print ("Scripter: Character AFK mode disabled.")
+    print("Scripter: Character AFK mode disabled.")
 end
 
 function Scripter.AFKSleep()
@@ -878,7 +861,7 @@ function Scripter.NotifyCharacterAction(notifyType, ntext)
 
     if Settings:GetValue(OPT_NOTIFY) == false then return end
     if Settings:GetValue(notifyType) == false then return end
-    ScripterLibGui.addMessage(ntext)
+    ScripterGui.addMessage(ntext)
 end
 
 function Scripter.ChatListCommand(argtext)
@@ -988,11 +971,11 @@ function Scripter.ChannelFilterEvent(control, ...)
 end
 
 function NewSyncChannelEvent(sender, message)
-    local str_ar = {strsplit(":", message)}
+    local str_ar = si_strsplit(":", message)
     if str_ar ~= nil then
         Scripter.savedVariables.userdata_public[sender] = ""
         for k,w in pairs(str_ar) do
-            local toks = {strsplit(" ", w)}
+            local toks = si_strsplit(" ", w)
             local val = toks[1];
             local name = Scripter.extractstr(toks,2)
 	    if name ~= "" then
@@ -1030,27 +1013,28 @@ function Scripter.NewChannelEvent(eventCode, messageType, sender, message)
     end
 end
 
-function Scripter.GetZoneAndSubzone(alternative)
-   if alternative then
-      return select(3,(GetMapTileTexture()):lower():find("maps/([%w%-]+/[%w%-]+_[%w%-]+)"))
-   end
-
-   return select(3,(GetMapTileTexture()):lower():find("maps/([%w%-]+)/([%w%-]+_[%w%-]+)"))
-end
+--function Scripter.GetZoneAndSubzone(alternative)
+--   if alternative then
+--      return select(3,(GetMapTileTexture()):lower():find("maps/([%w%-]+/[%w%-]+_[%w%-]+)"))
+--   end
+--
+--   return select(3,(GetMapTileTexture()):lower():find("maps/([%w%-]+)/([%w%-]+_[%w%-]+)"))
+--end
 
 function Scripter.GetPlayerLocation()
-    local zone, subzone = Scripter.GetZoneAndSubzone()
-    local x, y = GetMapPlayerPosition('player')
-    local subdesc = GetMapName()
-
-    loc = {}
-    loc.x = Scripter.FormatCordinate(x)
-    loc.y = Scripter.FormatCordinate(y)
-    loc.area = subdesc
-    loc.areaId = subzone
-    loc.zone = zone
-
-    return loc
+    return si_char_location()
+--    local zone, subzone = Scripter.GetZoneAndSubzone()
+--    local x, y = GetMapPlayerPosition('player')
+--    local subdesc = GetMapName()
+--
+--    loc = {}
+--    loc.x = Scripter.FormatCordinate(x)
+--    loc.y = Scripter.FormatCordinate(y)
+--    loc.area = subdesc
+--    loc.areaId = subzone
+--    loc.zone = zone
+--
+--    return loc
 end
 
 
@@ -1058,7 +1042,7 @@ function Scripter.GetPlayerSkillName(name)
     if (name == nil or name == "") then return nil end
 
     for k,v in pairs(Scripter.savedVariables.chardata_skill) do
-        if strifind(k, name) then return k end
+        if si_strifind(k, name) then return k end
     end
 
     return nil
@@ -1080,7 +1064,7 @@ function Scripter.GetPlayerQuestName(name)
     if (name == nil or name == "") then return nil end
 
     for k,v in pairs(Scripter.savedVariables.chardata_quest) do
-        if strifind(k, name) then return k end
+        if si_strifind(k, name) then return k end
     end
 
     return nil
@@ -1102,7 +1086,7 @@ function Scripter.GetPlayerCraftName(name)
     if (name == nil or name == "") then return nil end
 
     for k,v in pairs(Scripter.savedVariables.chardata_trait) do
-        if strifind(k, name) then return k end
+        if si_strifind(k, name) then return k end
     end
 
     return nil
@@ -1124,7 +1108,7 @@ function Scripter.GetPlayerAttributeName(name)
     if (name == nil or name == "") then return nil end
 
     for k,v in pairs(Scripter.savedVariables.chardata_attr) do
-        if strifind(k, name) then return k end
+        if si_strifind(k, name) then return k end
     end
 
     return nil
@@ -1146,7 +1130,7 @@ function Scripter.GetPlayerItemName(name)
     if (name == nil or name == "") then return nil end
 
     for k,v in pairs(Scripter.savedVariables.chardata_item_worn) do
-        if strifind(k, name) then return k end
+        if si_strifind(k, name) then return k end
     end
 
     return nil
@@ -1170,7 +1154,7 @@ function Scripter.NewVendorEvent(Event, Unit)
     Scripter.PreEventCheck()
 
     local name = GetUnitName("interact")
-    local zone, subzone = Scripter.GetZoneAndSubzone()
+    local zone, subzone = si_char_area()--Scripter.GetZoneAndSubzone()
     local subdesc = GetMapName()
     local reaction = GetUnitReaction("interact") 
 
@@ -1222,7 +1206,7 @@ function Scripter.NewZoneEvent()
     Scripter.PreEventCheck()
 
     -- generate table of zone <-> subzone association
-    local zone, subzone = Scripter.GetZoneAndSubzone()
+    local zone, subzone = si_char_area()--Scripter.GetZoneAndSubzone()
     local subdesc = GetMapName()
     Scripter.savedVariables.userdata_zone[subdesc] = zone
 
@@ -1458,10 +1442,24 @@ function Scripter.GetPlayerItemInfo(bagId, slotId)
         local i_wep = GetItemWeaponType(bagId, slotId)
         item['weapon'] = Scripter.GetItemWeaponLabel(i_wep)
     end
+
+    local i_link = GetItemLink(bagId, slotId)
+    if IsItemLinkBound(i_link) == true then
+        item['kind'] = "Bound" 
+    elseif IsItemLinkConsumable(i_link) == true then
+        item['kind'] = "Consumable"
+    elseif IsItemLinkUnique(i_link) == true then
+        item['kind'] = "Unique"
+    elseif IsItemLinkVendorTrash(i_link) == true then
+        item['kind'] = "Trash"
+    elseif IsItemLinkCrafted(i_link) == true then
+        item['kind'] = "Crafted"
+    end
+
     return item
 end
 
-function Scripter.GetInventoryItemText(item, cond)
+function Scripter.GetInventoryItemText(item, cond, showName)
     local text = ""
 
     if item == nil then
@@ -1471,7 +1469,9 @@ function Scripter.GetInventoryItemText(item, cond)
     if item['equip'] ~= nil then
         text = "(" .. item['equip'] .. ") " 
     end
-    text = text .. Scripter.HighlightText(item['name'])
+    if (showName == nil or showName == true) then
+        text = text .. Scripter.HighlightText(item['name'])
+    end
     -- show non-numeric initially
     local attr_text = ""
     for k,v in pairs(item) do
@@ -1499,10 +1499,6 @@ function Scripter.GetInventoryItemText(item, cond)
     end
 
     return text
-end
-
-function Scripter.PrintInventoryItem(item, cond)
-    print(Scripter.GetInventoryItemText(item, cond))
 end
 
 function Scripter.NewItemEvent(eventId, bagId, slotId, isNewItem, itemSoundCategory, updateReason)
@@ -1753,7 +1749,7 @@ function Scripter.MSync_ParseMailData(arguments)
     if arguments == nil then return nil end
     local data = {}
     for w in string.gmatch(arguments,"([^:]+)") do
-        local toks = {strsplit(" ", w)}
+        local toks = si_strsplit(" ", w)
         local val = toks[1];
         local name = Scripter.extractstr(toks,2)
         if (name ~= nil and name ~= "" and val ~= nil and val ~= "") then
@@ -2082,7 +2078,7 @@ function Scripter.AFKActionCommand(argtext)
 end
 
 function Scripter.OnlineFriendCommand()
-    print ("Friends (online):")
+    print("Friends (online):")
     for i = 1, GetNumFriends(), 1 do
         local displayName, note, playerStatus, secsSinceLogoff = GetFriendInfo(i)
 	local text = Scripter.GetFriendText(i)
@@ -2268,6 +2264,26 @@ function Scripter.ScreenshotSlashCommandHelp()
     print("- /snap  |cff8f41  " .. Scripter.savedVariables.userhelp_desc["/snap"])
 end
 
+function Scripter.FunctionSlashCommandHelp()
+    print("- /func  |cff8f41  List all defined functions.")
+    print("- /func <func> [<args>]  |cff8f41  Execute a function.")
+    print("- /func /edit <func>  |cff8f41  Edit a function's source code.")
+    print("API Library:")
+    print("- s_args  |cff8f41  A string of all the user arguments.")
+    print("- s_arg  |cff8f41  A string array of user arguments.")
+    print("- s_db_get(<name>)  |cff8f41  Obtain a stored value from the databank.")
+    print("- s_db_set(<name>, <value>)  |cff8f41  Set a value to be stored in the databank.")
+    print("- s_call(<func>[, <args>])  |cff8f41  Call another Scripter function with optional arguments.")
+    print("- s_loc()  |cff8f41  The current location of the character.")
+    print("- s_time()  |cff8f41  The current date and time.")
+    print("- s_print(<text>)  |cff8f41  Print text to the chat window.")
+    print("- s_pr_clr(<text>)  |cff8f41  Set the text color.")
+    print("- s_pr_cord([<loc>])  |cff8f41  Print the grid X and Y coordinates in meters.")
+    print("- s_pr_date([<time>])  |cff8f41  Print the date and time of a timestamp.")
+    print("- s_pr_loc([<loc>])  |cff8f41  Print information about the zone, sub-zone, and coordinates.")
+    print("- s_pr_time([<time>])  |cff8f41  Print the time of a timestamp.")
+end
+
 Scripter.helpCommands = {
     ["away"] = Scripter.AFKSlashCommandHelp,
     ["alias"] = Scripter.AliasSlashCommandHelp,
@@ -2277,6 +2293,7 @@ Scripter.helpCommands = {
     ["friend"] = Scripter.FriendSlashCommandHelp,
     ["keybind"] = Scripter.KeybindSlashCommandHelp,
     ["filter"] = Scripter.FilterSlashCommandHelp,
+    ["func"] = Scripter.FunctionSlashCommandHelp,
     ["junk"] = Scripter.JunkSlashCommandHelp,
     ["loc"] = Scripter.ZoneSlashCommandHelp,
     ["log"] = Scripter.LogSlashCommandHelp,
@@ -2329,7 +2346,7 @@ end
 
 function Scripter.HelpCommand(argtext)
     Scripter.PreCommandCheck()
-    local args = {strsplit(" ", argtext)}
+    local args = si_strsplit(" ", argtext)
     if next(args) == nil then
         Scripter.SlashCommandHelp()
         return
@@ -2348,7 +2365,7 @@ end
 
 function Scripter.KeybindCommand(argtext)
     Scripter.PreCommandCheck()
-    local args = {strsplit(" ", argtext)}
+    local args = si_strsplit(" ", argtext)
     if next(args) == nil then
         Scripter.KeybindSlashCommandHelp()
         return
@@ -2367,15 +2384,15 @@ end
 
 function Scripter.ListFriendCommand(argtext)
     if argtext == nil then
-        print ("Friends:")
+        print("Friends:")
     else
-        print ("Friends (" .. argtext .. "):")
+        print("Friends (" .. argtext .. "):")
     end
     for i = 1, GetNumFriends(), 1 do
         local displayName, note, playerStatus, secsSinceLogoff = GetFriendInfo(i)
         local hasCharacter, characterName = GetFriendCharacterInfo(i)
         local text = Scripter.GetFriendText(i)
-        if (argtext == nil or strifind(displayName, argtext) or strifind(characterName, argtext)) then
+        if (argtext == nil or si_strifind(displayName, argtext) or si_strifind(characterName, argtext)) then
             print(text)
         end
     end
@@ -2383,7 +2400,7 @@ end
 
 function Scripter.FriendCommand(argtext)
     Scripter.PreCommandCheck()
-    local args = {strsplit(" ", argtext)}
+    local args = si_strsplit(" ", argtext)
     if next(args) == nil then
         Scripter.ListFriendCommand()
         return
@@ -2423,7 +2440,7 @@ function Scripter.FilterDeleteCommand(argtext)
     end
 
     Scripter.savedVariables.userdata_filter[argtext] = nil
-    print ("Scripter: Filter '" .. Scripter.HighlightText(argtext) .. "' deleted.")
+    print("Scripter: Filter '" .. Scripter.HighlightText(argtext) .. "' deleted.")
 end
 
 Scripter.filterCommands = {
@@ -2437,11 +2454,11 @@ function Scripter.FilterCommand(argtext)
         return
     end
 
-    local args = {strsplit(" ", argtext)}
+    local args = si_strsplit(" ", argtext)
     local fcommand = Scripter.filterCommands[args[1]]
     if not fcommand then
         Scripter.savedVariables.userdata_filter[argtext] = ""
-        print ("Scripter: Filter '" .. Scripter.HighlightText(argtext) .. "' added.")
+        print("Scripter: Filter '" .. Scripter.HighlightText(argtext) .. "' added.")
         return
     end
 
@@ -2467,18 +2484,18 @@ function Scripter.Alias_DoCommandInClosure(alias, cmd)
 				SLASH_COMMANDS["/"..cmd](userArgs)
 			end
 		else
-			CHAT_SYSTEM:AddMessage("Command /"..cmd.." doesn't exist.")
+			print("Command /"..cmd.." doesn't exist.")
 		end
 	end
 end
 
 function Scripter.Alias_ListAliases(...)
-	CHAT_SYSTEM:AddMessage("Defined aliases:")
+	print("Defined aliases:")
 	for k,v in pairs(Scripter.savedVariables.userdata_alias_v3) do
 		if type(v) == "table" then
-			CHAT_SYSTEM:AddMessage(k.." -> "..v[1].."("..table.concat(v, ", ", 2)..")")
+			print(k.." -> "..v[1].."("..table.concat(v, ", ", 2)..")")
 		else
-			CHAT_SYSTEM:AddMessage(k.." -> "..v)
+			print(k.." -> "..v)
 		end
 	end
 end
@@ -2506,12 +2523,12 @@ function Scripter.Alias_AddAlias(arguments)
 	cmd = string.gsub(cmd, "(/)", "")
 
 	if SLASH_COMMANDS["/"..alias] ~= nil then
-	    CHAT_SYSTEM:AddMessage("Command /"..alias.." already exists.")
+	    print("Command /"..alias.." already exists.")
 	    return
 	end
 	
 	if cmd == alias then
-	    CHAT_SYSTEM:AddMessage("Alias name and command cannot be the same.")
+	    print("Alias name and command cannot be the same.")
 	    return
 	end
 	
@@ -2519,7 +2536,7 @@ function Scripter.Alias_AddAlias(arguments)
 	
 	Scripter.savedVariables.userdata_alias_v3[alias] = {cmd, aliasArgs}
 	Scripter.Alias_DoCommandInClosure(alias, Scripter.savedVariables.userdata_alias_v3[alias])
-	CHAT_SYSTEM:AddMessage("Scripter: Alias /"..alias.." added.")
+	print("Scripter: Alias /"..alias.." added.")
 end
 
 function Scripter.AliasDeleteCommand(arguments)
@@ -2531,7 +2548,7 @@ function Scripter.AliasDeleteCommand(arguments)
     end
     
     if args[1] == nil then
-    	CHAT_SYSTEM:AddMessage("Usage: /alias /delete <alias>")
+    	print("Usage: /alias /delete <alias>")
     	return
     end
     
@@ -2539,7 +2556,7 @@ function Scripter.AliasDeleteCommand(arguments)
     args[1] = string.gsub(args[1], "(/)", "")
     
     if Scripter.savedVariables.userdata_alias_v3[args[1]] == nil then
-    	CHAT_SYSTEM:AddMessage("Alias /"..args[1].." does not exist.")
+    	print("Alias /"..args[1].." does not exist.")
     	return
     end
     
@@ -2574,7 +2591,7 @@ Scripter.aliasCommands = {
 }
 
 function Scripter.AliasCommand(argtext)
-    local args = {strsplit(" ", argtext)}
+    local args = si_strsplit(" ", argtext)
     if next(args) == nil then
         Scripter.Alias_ListAliases()
         return
@@ -2619,7 +2636,7 @@ function Scripter.LogFilterListCommand(argtext)
     print("History (" .. argtext .. "):")
     for i = Scripter.savedVariables.log_idx + 1, 1000, 1 do
 	    if Scripter.savedVariables.log[i] ~= nil then
-		    if strifind(Scripter.savedVariables.log[i], argtext) then
+		    if si_strifind(Scripter.savedVariables.log[i], argtext) then
 		        print(Scripter.savedVariables.log[i])
                     end
             end
@@ -2673,7 +2690,7 @@ end
 
 function Scripter.LogCommand(argtext)
     Scripter.PreCommandCheck()
-    local args = {strsplit(" ", argtext)}
+    local args = si_strsplit(" ", argtext)
     if next(args) == nil then
         Scripter.LogListCommand("")
         return
@@ -2846,7 +2863,7 @@ end
 function Scripter.ScoreListBuffCommand(argtext)
     local numBuffs = GetNumBuffs(unit)
 		if numBuffs == 0 then
-        print ("No current character effects.")
+        print("No current character effects.")
         return
     end	
     print("Buffs:")
@@ -2896,15 +2913,21 @@ function Scripter.GetPlayerSkills()
         ["Medium Armor"] = GetSkillLineXPInfo(3,2),
         ["Heavy Armor"] = GetSkillLineXPInfo(3,3),
         ["Two Handed"] = GetSkillLineXPInfo(2,1),
-        ["One Handed"] = GetSkillLineXPInfo(2,2),
+        ["One Hand and Shield"] = GetSkillLineXPInfo(2,2),
         ["Dual Wield"] = GetSkillLineXPInfo(2,3),
         ["Bow"] = GetSkillLineXPInfo(2,4),
         ["Destruction Staff"] = GetSkillLineXPInfo(2,5),
         ["Restoration Staff"] = GetSkillLineXPInfo(2,6),
-        ["Class Tree 1"] = GetSkillLineXPInfo(1,1),
-        ["Class Tree 2"] = GetSkillLineXPInfo(1,2),
-        ["Class Tree 3"] = GetSkillLineXPInfo(1,3),
     }
+    if GetUnitClass('player') == "Sorcerer" then
+        skills["Dark Magic"] = GetSkillLineXPInfo(1,1)
+        skills["Daedric Summoning"] = GetSkillLineXPInfo(1,2)
+        skills["Storm Calling"] = GetSkillLineXPInfo(1,3)
+    else
+        skills["Class Tree 1"] = GetSkillLineXPInfo(1,1)
+        skills["Class Tree 2"] = GetSkillLineXPInfo(1,2)
+        skills["Class Tree 3"] = GetSkillLineXPInfo(1,3)
+    end
 
     Scripter.savedVariables.userdata_skill = {}
     for k,v in pairs(skills) do
@@ -2957,9 +2980,9 @@ function Scripter.ScoreUserListCommand(argtext)
         return
     end
 
-    print ("Characters:")
+    print("Characters:")
     for k,v in pairs(Scripter.savedVariables.chardata_attr) do
-        print ("- " .. k)
+        print("- " .. k)
     end
 end
 
@@ -3035,7 +3058,7 @@ Scripter.statCommands = {
 function Scripter.ScoreCommand(argtext)
     Scripter.PreCommandCheck()
 
-    local args = {strsplit(" ", argtext)}
+    local args = si_strsplit(" ", argtext)
     if next(args) == nil then
         Scripter.ScoreSummaryCommand()
         return
@@ -3091,6 +3114,19 @@ function Scripter.TimeCommand(argtext)
         print("Local time is " .. Scripter.GetGameTime(GetTimeStamp()) .. " (" .. Scripter.GetMoonPhase(GetTimeStamp()) .. " moon).")
         print("Earth time is " .. Scripter.FormatDate(GetTimeStamp()) .. ".")
     end
+    local diff = GetTimeStamp() - Scripter.savedVariables.usertemp_login_stamp
+    if diff < 60 then
+        print("You have been playing for " .. diff .. " seconds.")
+    elseif diff < 3600 then
+        diff = string.format("%.2f", diff / 60)
+        print("You have been playing for " .. diff .. " minutes.")
+    elseif diff < 86400 then
+        diff = string.format("%.2f", diff / 3600)
+        print("You have been playing for " .. diff .. " hours.")
+    else
+        diff = string.format("%.2f", diff / 86400)
+        print("You have been playing for " .. diff .. " days.")
+    end
 end
 
 function Scripter.GetTimerOffset()
@@ -3114,7 +3150,7 @@ function Scripter.FireTimers()
         if now > k then
             Scripter.savedVariables.usertime_timer[k] = nil
 
-            local args = {strsplit(" ", v)}
+            local args = si_strsplit(" ", v)
             local cmd = args[1]
             Scripter.FireTimer(cmd, Scripter.extractstr(args,2))
         end
@@ -3126,7 +3162,7 @@ function Scripter.FireTimers()
             Scripter.savedVariables.usertime_ptimer[k] = nil
             Scripter.savedVariables.usertime_ptimer_span[k] = nil
 
-            local args = {strsplit(" ", v)}
+            local args = si_strsplit(" ", v)
             local cmd = args[1]
             Scripter.FireTimer(cmd, Scripter.extractstr(args,2))
 
@@ -3144,7 +3180,7 @@ function Scripter.FireTimers()
 end
 
 function Scripter.AddPtimer(time, cmd)
-    local args = {strsplit(" ", cmd)}
+    local args = si_strsplit(" ", cmd)
     if args[1] == nil then
         print("Scripter: You must specify a command.")
         return false
@@ -3162,7 +3198,7 @@ function Scripter.AddPtimer(time, cmd)
 end
 
 function Scripter.TimerRepeatCommand(argtext)
-    local args = {strsplit(" ", argtext)}
+    local args = si_strsplit(" ", argtext)
     if next(args) == nil then
         Scripter.TimerSlashCommandHelp()
         return
@@ -3201,7 +3237,7 @@ function Scripter.TimerDeleteCommand(argtext)
         return
     end
 
-    print ("Scripter: Timer id '" .. Scripter.HighlightText(number) .. "' not found.")
+    print("Scripter: Timer id '" .. Scripter.HighlightText(number) .. "' not found.")
 end
 
 Scripter.timerCommands = {
@@ -3213,7 +3249,7 @@ Scripter.timerCommands = {
 function Scripter.AddTimer(time, cmd)
     if (time == nil or cmd == nil) then return end
 
-    local args = {strsplit(" ", cmd)}
+    local args = si_strsplit(" ", cmd)
     if (args[1] == nil or SLASH_COMMANDS["/"..args[1]] == nil) then
         print("Scripter: Unknown command '/" .. args[1] .. "'.")
         return false
@@ -3225,20 +3261,20 @@ function Scripter.AddTimer(time, cmd)
 end
 
 function Scripter.TimerSlashListCommand()
-    print ("Timers:")
+    print("Timers:")
     for k,v in pairs(Scripter.savedVariables.usertime_timer) do
-        print ("[" .. Scripter.FormatTime(k) .. "] " .. v .. " (id: " .. k .. ")")
+        print("[" .. Scripter.FormatTime(k) .. "] " .. v .. " (id: " .. k .. ")")
     end
 
-    print ("Repeated Timers:")
+    print("Repeated Timers:")
     for k,v in pairs(Scripter.savedVariables.usertime_ptimer) do
-        print ("[" .. Scripter.FormatTime(k) .. " (every " .. Scripter.savedVariables.usertime_ptimer_span[k] .. "s)] " .. v .. " (id: " .. k .. ")")
+        print("[" .. Scripter.FormatTime(k) .. " (every " .. Scripter.savedVariables.usertime_ptimer_span[k] .. "s)] " .. v .. " (id: " .. k .. ")")
     end
 end	
 
 function Scripter.TimerCommand(argtext)
     Scripter.PreCommandCheck()
-    local args = {strsplit(" ", argtext)}
+    local args = si_strsplit(" ", argtext)
     if next(args) == nil then
         Scripter.TimerSlashListCommand()
         return
@@ -3487,7 +3523,7 @@ Scripter.syncCommands = {
 
 function Scripter.SyncCommand(argtext)
     Scripter.PreCommandCheck()
-    local args = {strsplit(" ", argtext)}
+    local args = si_strsplit(" ", argtext)
     if next(args) == nil then
         Scripter.SyncListCommand()
         return
@@ -3503,7 +3539,7 @@ function Scripter.SyncCommand(argtext)
 end
 
 function Scripter.ListVendorCommand(argtext)
-    local zone, subzone = Scripter.GetZoneAndSubzone()
+    local zone, subzone = si_char_area()--Scripter.GetZoneAndSubzone()
     local subdesc = GetMapName()
     local found = false
 
@@ -3528,7 +3564,7 @@ end
 function Scripter.FilterVendorCommand(argtext)
     print("Vendor (" .. argtext .. "):")
     for k,v in pairs(Scripter.savedVariables.userdata_vendor) do
-        if (strifind(k, argtext) or strifind(v, argtext)) then
+        if (si_strifind(k, argtext) or si_strifind(v, argtext)) then
             print(k .. " [" .. v .. "]")
 	end
     end
@@ -3548,7 +3584,7 @@ Scripter.vendorCommands = {
 
 function Scripter.VendorCommand(argtext)
     Scripter.PreCommandCheck()
-    local args = {strsplit(" ", argtext)}
+    local args = si_strsplit(" ", argtext)
     if next(args) == nil then
         Scripter.ListVendorCommand()
         return
@@ -3577,18 +3613,21 @@ function Scripter.LeaveGroupCommand(argtext)
 --    print("You disband from the group.")
 end
 
-function Scripter.FormatCordinate(cord)
-   return zo_round(cord * 10000) / 10000
-end
+--function Scripter.FormatCordinate(cord)
+--   return zo_round(cord * 10000) / 10000
+--end
 
 function Scripter.CordinateToMeters(cord)
-    return zo_round(300 * cord)
+    return si_formatmeter(cord)
+--    return zo_round(300 * cord)
 end
 
 function Scripter.CordinateDistance(x, y)
     local plrX, plrY = GetMapPlayerPosition('player')
-    local locX = Scripter.FormatCordinate(plrX)
-    local locY = Scripter.FormatCordinate(plrY)
+--    local locX = Scripter.FormatCordinate(plrX)
+--    local locY = Scripter.FormatCordinate(plrY)
+    local locX = si_formatcord(plrX)
+    local locY = si_formatcord(plrY)
 
     local distX = zo_abs(Scripter.CordinateToMeters(x - plrX)) 
     local distY = zo_abs(Scripter.CordinateToMeters(y - plrY)) 
@@ -3635,7 +3674,8 @@ function Scripter.CordinateDirection(x, y)
 end
 
 function Scripter.GetCordinateText(x, y)
-    return Scripter.CordinateToMeters(x) .. ":" .. Scripter.CordinateToMeters(y)
+    return si_cord(x, y)
+--    return Scripter.CordinateToMeters(x) .. ":" .. Scripter.CordinateToMeters(y)
 end
 
 function Scripter.GetDistanceText(x, y)
@@ -3668,7 +3708,7 @@ end
 function Scripter.ZoneFilterCommand(argtext)
     print("Zones (" .. argtext .. "):")
     for k,v in pairs(Scripter.savedVariables.userdata_zone) do
-        if (strifind(k, argtext) or strifind(v, argtext)) then
+        if (si_strifind(k, argtext) or si_strifind(v, argtext)) then
             print("Location: " .. k .. " of " .. v .. ".")
         end
     end
@@ -3732,7 +3772,7 @@ Scripter.zoneCommands = {
 
 function Scripter.ZoneCommand(argtext)
     Scripter.PreCommandCheck()
-    local args = {strsplit(" ", argtext)}
+    local args = si_strsplit(" ", argtext)
     if next(args) == nil then
         Scripter.ZoneInfoCommand()
         return
@@ -3818,7 +3858,7 @@ Scripter.questCommands = {
 function Scripter.QuestCommand(argtext)
     Scripter.PreCommandCheck()
 
-    local args = {strsplit(" ", argtext)}
+    local args = si_strsplit(" ", argtext)
     if next(args) == nil then
         Scripter.QuestListAreaCommand()
         return
@@ -3879,16 +3919,24 @@ function Scripter.ListPackInventoryCommand()
     print("Inventory:")
     local max = GetBagSize(BAG_BACKPACK)
     for slotId = 0, max do
+        local link = GetItemLink(BAG_BACKPACK, slotId)
         local cond = Scripter.GetItemCondition(BAG_BACKPACK, slotId)
         local item = Scripter.GetInventoryItem(BAG_BACKPACK, slotId)
-        Scripter.PrintInventoryItem(item, cond)
+        local text = Scripter.GetInventoryItemText(item, cond, false)
+        if text ~= nil then
+            print(link .. text)
+        end
     end
     local max = GetBagSize(BAG_WORN)
     for slotId = 0, max do
+        local link = GetItemLink(BAG_WORN, slotId)
         local cond = Scripter.GetItemCondition(BAG_WORN, slotId)
         local item = Scripter.GetInventoryItem(BAG_WORK, slotId)
         if (item ~= nil and item['equip'] == nil) then
-    	Scripter.PrintInventoryItem(item, cond)
+            local text = Scripter.GetInventoryItemText(item, cond, false)
+            if text ~= nil then
+                print(link .. text)
+            end
         end
     end
 end
@@ -3899,10 +3947,14 @@ function Scripter.ListWornInventoryCommand(argtext)
        print("Worn:")
        local max = GetBagSize(BAG_WORN)
        for slotId = 0, max do
+           local link = GetItemLink(bagId, slotId)
            local cond = Scripter.GetItemCondition(BAG_WORN, slotId)
            local item = Scripter.GetInventoryItem(BAG_WORN, slotId)
            if (item ~= nil and item['equip'] ~= nil) then
-               Scripter.PrintInventoryItem(item, cond)
+               local text = Scripter.GetInventoryItemText(item, cond, true)
+               if text ~= nil then
+                   print(link .. text)
+               end
            end
        end
     else
@@ -3917,7 +3969,7 @@ function Scripter.ListWornInventoryCommand(argtext)
         for k,v in pairs(data) do
 	    local item = {}
 	    item['name'] = k
-            Scripter.PrintInventoryItem(item)
+            print(Scripter.GetInventoryItemText(item))
         end
     end
 end
@@ -3925,10 +3977,14 @@ function Scripter.ListBankInventoryCommand(argtext)
     print("Bank:")
     local max = GetBagSize(BAG_BANK)
     for slotId = 0, max do
-       local cond = Scripter.GetItemCondition(BAG_BANK, slotId)
        local item = Scripter.GetInventoryItem(BAG_BANK, slotId)
        if item ~= nil then
-           Scripter.PrintInventoryItem(item, cond)
+           local cond = Scripter.GetItemCondition(BAG_BANK, slotId)
+           local text = Scripter.GetInventoryItemText(item, cond)
+           if text ~= nil then
+               local link = GetItemLink(bagId, slotId)
+               print(link .. text)
+           end
        end 
     end
 end
@@ -3952,7 +4008,7 @@ Scripter.inventoryCommands = {
 function Scripter.InventoryCommand(argtext)
     Scripter.PreCommandCheck()
 
-    local args = {strsplit(" ", argtext)}
+    local args = si_strsplit(" ", argtext)
     if next(args) == nil then
         Scripter.InventorySummaryListCommand()
         return
@@ -3981,7 +4037,7 @@ end
 
 function Scripter.JunkCommand(textarg)
     Scripter.PreCommandCheck()
-    local args = {strsplit(" ", argtext)}
+    local args = si_strsplit(" ", argtext)
     if next(args) == nil then
         Scripter.JunkListCommand()
         return
@@ -3992,9 +4048,9 @@ end
 
 function Scripter.CommandListCommand(textarg)
     if textarg == nil then
-        print ("Commands:")
+        print("Commands:")
     else
-        print ("Commands (" .. textarg .. "):")
+        print("Commands (" .. textarg .. "):")
     end
 
     local cnt = 0
@@ -4059,7 +4115,7 @@ function Scripter.ScripterCommandsCommand(argtext)
 end
 
 function Scripter.EmoteCommandsCommand(argtext)
-    print ("Emote Commands:")
+    print("Emote Commands:")
     local emoteCount = GetNumEmotes()
     for j = 1, emoteCount, 1 do
         local cmd = GetEmoteSlashName(j)
@@ -4070,7 +4126,7 @@ function Scripter.EmoteCommandsCommand(argtext)
 end
 
 function Scripter.CommandDescCommand(argtext)
-    local args = {strsplit(" ", argtext)}
+    local args = si_strsplit(" ", argtext)
     if next(args) == nil then
         Scripter.CommandSlashCommandHelp()
         return
@@ -4101,7 +4157,7 @@ Scripter.commandCommands = {
 
 function Scripter.CommandCommand(argtext)
     Scripter.PreCommandCheck()
-    local args = {strsplit(" ", argtext)}
+    local args = si_strsplit(" ", argtext)
     if next(args) == nil then
         Scripter.CommandListCommand()
         return
@@ -4117,7 +4173,7 @@ function Scripter.CommandCommand(argtext)
 end
 
 function Scripter.PartyListCommand()
-    print ("Party members:")
+    print("Party members:")
     for i = 1, GetGroupSize(), 1 do
         print("- " .. Scripter.FormatItemName(GetGroupUnitTagByIndex(i)))
     end
@@ -4131,7 +4187,7 @@ Scripter.partyCommands = {
 function Scripter.PartyCommand(argtext)
     Scripter.PreCommandCheck()
 
-    local args = {strsplit(" ", argtext)}
+    local args = si_strsplit(" ", argtext)
     if next(args) == nil then
         Scripter.PartyListCommand()
         return
@@ -4320,15 +4376,14 @@ function Scripter.NewExpEvent( eventCode, unitTag, currentExp, maxExp, reason )
     end
 end
 
+--local x, y = GetMapPlayerPosition("player")
+--local zone, subzone = Scripter.GetZoneAndSubzone()
 function Scripter.notifyLore(categoryIndex, collectionIndex, bookIndex)
-    --local x, y = GetMapPlayerPosition("player")
-    local zone, subzone = Scripter.GetZoneAndSubzone()
     local categoryName, numCollections = GetLoreCategoryInfo(categoryIndex)
     local title, icon, known = GetLoreBookInfo(categoryIndex, collectionIndex, bookIndex)
-    local text = ""
-
     if title == nil then return end
-    text = "Obtained '" .. Scripter.HighlightText(title) .. "'.";
+
+    local text = "Obtained '" .. Scripter.HighlightText(title) .. " (" .. categoryName .. ")'.";
     Scripter.NotifyCharacterAction(OPT_NOTIFY_BOOK, text)
 end
 
@@ -4501,10 +4556,6 @@ function Scripter.NewLoreBookEvent(eventCode, categoryIndex, collectionIndex, bo
     if categoryIndex ~= 1 then return end
     Scripter.PrintDebug("NewLoreBookEvent")
 
-    if (x == nil or y == nil) then return end
-    local locX = Scripter.FormatCordinate(x)
-    local locY = Scripter.FormatCordinate(y)
-  
     Scripter.AddAbilityRate("Lore", 1)
     Scripter.notifyLore(categoryIndex, collectionIndex, bookIndex)
 end
@@ -4556,28 +4607,9 @@ function Scripter.RefreshPlayerInventory()
    end
 end
 
-function Scripter.InitializeChatWindowFont()
-    -- set the default CHAT window font size. 
-    local font_type = Settings:GetValue(OPT_CHAT_FONT)
-    local font_size = Settings:GetValue(OPT_CHAT_FONT_SIZE)
-    -- chat history list
-    ZO_ChatWindowAgentChat:SetFont(string.format( "%s|%d|%s", 
-        Scripter.GetFont(font_type), font_size, "soft-shadow-thin")); 
-    -- entry textfield
-    font_size = font_size - 0.5
-    ZO_ChatWindowTextEntryEditBox:SetFont(string.format( "%s|%d|%s", 
-        Scripter.GetFont(font_type), font_size, "soft-shadow-thin")); 
-    font_size = font_size - 0.5
-    ZO_ChatWindowTextEntryLabel:SetFont(string.format( "%s|%d|%s",
-        Scripter.GetFont(font_type), font_size, "soft-shadow-thin")); 
-end
-
 function Scripter.InitializeChatWindow()
     -- allow chat to be resized to full-screen dimensions.
     CHAT_SYSTEM.maxContainerWidth, CHAT_SYSTEM.maxContainerHeight = GuiRoot:GetDimensions()
-
--- cant find control for flip'n chat history
---    Scripter.InitializeChatWindowFont()
 
     NativeChannelEvent = CHAT_SYSTEM.OnChatEvent
     CHAT_SYSTEM.OnChatEvent = Scripter.ChannelFilterEvent
@@ -4588,8 +4620,10 @@ function Scripter.OnAddOnLoaded(event, addonName)
 
     Settings = ScripterSettings:New()
 
-    ScripterLibGui.initializeSavedVariable()		
-    ScripterLibGui.CreateWindow()						
+    ScripterGui.initializeSavedVariable()		
+    ScripterGui.CreateWindow()						
+
+    InitScripterNoteWindow()
 
     Scripter.savedVariables = ZO_SavedVars:NewAccountWide("Scripter_SavedVariables", 1, "default", Scripter.defaults)
 
@@ -4650,7 +4684,7 @@ function Scripter.GetMailId(id)
 end
 
 function Scripter.SendMailCommand(argtext)
-    local args = {strsplit(" ", argtext)}
+    local args = si_strsplit(" ", argtext)
     local accountName = args[1]
     local text = Scripter.extractstr(args,2)
     local tbuf = Scripter.FormatDate(GetTimeStamp()) 
@@ -4684,9 +4718,9 @@ function Scripter.ListMailCommand(argtext)
     local unread = GetNumUnreadMail()
 
     if unread > 0 then
-        print ("Mail (" .. unread .. " unread):")
+        print("Mail (" .. unread .. " unread):")
     else
-        print ("Mail:")
+        print("Mail:")
     end
 
     local numMail = GetNumMailItems()
@@ -4713,7 +4747,7 @@ function Scripter.DeleteMailCommand(argtext)
 --    ReadMail(mailId) -- mark as read
 --    DeleteMail(mailId, false)
     Scripter.savedVariables.usertemp_mail[argtext] = nil
-    print ("Scripter: Deleted mail message #" .. argtext .. ".")
+    print("Scripter: Deleted mail message #" .. argtext .. ".")
 end
 
 function Scripter.ReadMailCommand(argtext)
@@ -4735,7 +4769,7 @@ function Scripter.ReadMailCommand(argtext)
     else
         print(body)
     end
---    print (ReadMail(mailId))
+--    print(ReadMail(mailId))
 end
 
 function Scripter.PurgeMailCommand(argtext)
@@ -4755,7 +4789,7 @@ function Scripter.PurgeMailCommand(argtext)
             Scripter.DeleteGameMail(mailId)
 --            ReadMail(mailId) -- mark as read
 --            DeleteMail(mailId, false)
-            print ("Scripter: Deleted mail message '" .. Scripter.HighlightText(Subject) .. "'.")
+            print("Scripter: Deleted mail message '" .. Scripter.HighlightText(Subject) .. "'.")
         end
     end
 end
@@ -4769,7 +4803,7 @@ Scripter.mailCommands = {
 function Scripter.MailCommand(argtext)
     Scripter.PreCommandCheck()
 
-    local args = {strsplit(" ", argtext)}
+    local args = si_strsplit(" ", argtext)
     if next(args) == nil then
         Scripter.ListMailCommand(argtext)
         return
@@ -4824,7 +4858,7 @@ function Scripter.PrintGuildCharacters(guildId)
     local guildName = GetGuildName(guildId) 
     if guildName == nil then return end
 
-    print ("Guild (" .. guildName .. "):")
+    print("Guild (" .. guildName .. "):")
     for memberId = 1, GetNumGuildMembers(guildId) do
         local text = Scripter.GetGuildMemberText(guildId, memberId)
         if (hasCharacter == true) then
@@ -4839,14 +4873,14 @@ function Scripter.ListGuildsCommand()
     print("Guilds:")
     for i = 1, GetNumGuilds() do
         local guildName = GetGuildName(GetGuildId(i))
-	print ("- " .. guildName)
+	print("- " .. guildName)
     end
 end
 Scripter.guildCommands = {
     ["/invite"] = Scripter.GuildInviteCommand,
 }
 function Scripter.GuildCommand(argtext)
-    local args = {strsplit(" ", argtext)}
+    local args = si_strsplit(" ", argtext)
     if next(args) == nil then
         Scripter.ListGuildsCommand()
         return
@@ -4902,7 +4936,7 @@ function Scripter.ResearchCommand(argtext)
     Scripter.PreCommandCheck()
 
     if (argtext == nil or argtext == "") then
-        print ("Backpack items:")
+        print("Backpack items:")
         local bagId = BAG_BACKPACK
         local max = GetBagSize(bagId)
         for slotId = 0, max do
@@ -4922,7 +4956,7 @@ function Scripter.ResearchCommand(argtext)
 
 -- 		local canSmith = CanItemBeSmithingTraitResearched(bagId, slotId, craftType, researchIndex, traitType)
 -- 		if canSmith == true then
--- 		    print ("DEBUG: CanItemBeSmithing: True")
+-- 		    print("DEBUG: CanItemBeSmithing: True")
 --                 end
 
 -- 		local dur, timeLeft = GetSmithingResearchLineTraitTimes(craftType, researchIndex, traitType)
@@ -4959,7 +4993,7 @@ function Scripter.ResearchCommand(argtext)
 end
 
 function Scripter.AFKCommand(argtext)
-    local args = {strsplit(" ", argtext)}
+    local args = si_strsplit(" ", argtext)
     if next(args) == nil then
         Scripter.AFKToggleCommand()
         return
@@ -4980,7 +5014,114 @@ function Scripter.MinimizeCommand(argtext)
 end
 
 function Scripter.ClearCommand()
-    Scripter.ClearChatWindow()
+    si_chat_clear();
+end
+
+function Scripter.NewNoteFunctionEvent(title, text)
+    Scripter.savedVariables.userdata_func[title] = text
+    print("Scripter: Saved function '" .. Scripter.HighlightText(title) .. "'.")
+end
+
+function Scripter.NewNoteEvent(mode, title, text)
+    if mode == NOTE_MODE_FUNCTION then
+        Scripter.NewNoteFunctionEvent(title, text)
+    end
+end
+
+function Scripter.FunctionClearCommand(argtext)
+    Scripter.savedVariables.userdata_func = default_functions
+    print("Scripter: The default functions have been set.")
+end
+
+function Scripter.FunctionDeleteCommand(argtext)
+    if (argtext == nil or argtext == "") then
+        Scripter.FunctionSlashCommandHelp()
+        return
+    end
+
+    local text = Scripter.savedVariables.userdata_func[argtext]
+    if (text == nil or text == "") then
+        print("Scripter: Unknown function name '" .. Scripter.HighlightText(argtext) .. "'.")
+        return
+    end
+
+    Scripter.savedVariables.userdata_func[argtext] = nil
+    print("Scripter: Function '" .. Scripter.HighlightText(argtext) .. "' has been deleted.")
+end
+
+function Scripter.DefaultFunctionText(argtext)
+    return
+        "local timestamp = s_get('test_timestamp')\n" ..
+        "local location = s_get('test_location')\n" ..
+        "s_print(\n" ..
+        "    s_pr_clr(0.5,0.5,0.5) .. s_pr_time() .. ': ' ..\n" ..
+        "    s_pr_clr(0.25,0.25,0.75) .. 'Arguments: ' .. s_args)\n" .. 
+	"if s_arg[1] ~= nil then\n" .. 
+	"    s_print('Argument One: ' .. s_arg[1])\n" ..
+	"end\n" ..
+        "s_print('Last Time: ' .. s_pr_time(timestamp))\n" ..
+        "s_print('Last Place: ' .. s_pr_loc(location))\n" ..
+        "s_set('test_timestamp', s_time())\n" ..
+        "s_set('test_location', s_loc())\n"
+end
+
+function Scripter.FunctionEditCommand(argtext)
+    if (argtext == nil or argtext == "") then
+        Scripter.FunctionSlashCommandHelp()
+    end
+
+    local text = Scripter.savedVariables.userdata_func[argtext]
+    if text == nil then text = Scripter.DefaultFunctionText() end
+    ScripterNoteShow(NOTE_MODE_FUNCTION, argtext:lower(), text, Scripter.NewNoteEvent)
+end
+Scripter.functionCommands = {
+    ["/clear"] = Scripter.FunctionClearCommand,
+    ["/delete"] = Scripter.FunctionDeleteCommand,
+    ["/edit"] = Scripter.FunctionEditCommand,
+}
+function Scripter.FunctionExecuteCommand(argtext)
+    local args = si_strsplit(" ", argtext)
+    if next(args) == nil then
+        Scripter.FunctionListCommand()
+    end
+
+    local text = Scripter.savedVariables.userdata_func[args[1]]
+    if text == nil then
+        print("Scripter: Function '" .. Scripter.HighlightText(argtext) .. "' not found.")
+        return
+    end
+
+    si_exec(text, Scripter.extractstr(args, 2))
+--    s_args = Scripter.extractstr(args, 2)
+--    s_arg = si_strsplit(" ", s_args)
+--    ScriptCommand(text)
+end
+function Scripter.FunctionListCommand()
+    print("Functions:")
+    for k, v in pairs(Scripter.savedVariables.userdata_func) do
+        v = v:gsub("\n", " ")
+        if string.len(v) > 128 then
+            v = string.sub(v, 0, 128) .. "..."
+        end
+        print(k .. "(..) = { " .. v .. " }")
+    end
+end
+function Scripter.FunctionCommand(argtext)
+    Scripter.PreCommandCheck("function", argtext)
+
+    local args = si_strsplit(" ", argtext)
+    if next(args) == nil then
+        Scripter.FunctionListCommand()
+        return
+    end
+
+    local fcommand = Scripter.functionCommands[args[1]]
+    if not fcommand then
+        Scripter.FunctionExecuteCommand(argtext)
+        return
+    end
+
+    fcommand(Scripter.extractstr(args, 2))
 end
 
 EVENT_MANAGER:RegisterForEvent("Scripter", EVENT_ADD_ON_LOADED, Scripter.OnAddOnLoaded)
@@ -4993,6 +5134,7 @@ if WF_SlashCommand ~= nil then
     WF_SlashCommand("keybind", Scripter.KeybindCommand)
     WF_SlashCommand("filter", Scripter.FilterCommand)
     WF_SlashCommand("friend", Scripter.FriendCommand)
+    WF_SlashCommand("func", Scripter.FunctionCommand)
     WF_SlashCommand("eq", Scripter.InventoryCommand)
     WF_SlashCommand("junk", Scripter.JunkCommand)
     WF_SlashCommand("loc", Scripter.ZoneCommand)
@@ -5018,6 +5160,7 @@ else
     SLASH_COMMANDS["/keybind"] = Scripter.KeybindCommand
     SLASH_COMMANDS["/filter"] = Scripter.FilterCommand
     SLASH_COMMANDS["/friend"] = Scripter.FriendCommand
+    SLASH_COMMANDS["/func"] = Scripter.FunctionCommand
     SLASH_COMMANDS["/eq"] = Scripter.InventoryCommand
     SLASH_COMMANDS["/junk"] = Scripter.JunkCommand
     SLASH_COMMANDS["/loc"] = Scripter.ZoneCommand
@@ -5039,17 +5182,22 @@ else
 end
 -- TODO: /trigger
 -- TODO: /sconfig [/autorepair] [/autojunk] [/autoloot]
+-- TODO: /log /save -> /chatlog
 
 SLASH_COMMANDS["/alias"] = Scripter.AliasCommand
 
 local function Intro()
     EVENT_MANAGER:UnregisterForEvent("Scripter", EVENT_PLAYER_ACTIVATED)
-    d("Scripter v" .. scripterVersion .. " initialized. Type '/scripter' for usage.")
+
+    Settings:InitializeChatWindowFont()
+
+    d("Scripter v" .. string.format("%.2f", scripterVersion) .. " initialized. Type '/scripter' for usage.")
 
     if (Scripter.savedVariables.usertemp_llogin ~= nil and Settings:GetValue(OPT_NOTIFY) == true) then
         d("Scripter: Last login was " .. Scripter.savedVariables.usertemp_llogin)
     end
-    
+
+    Scripter.savedVariables.usertemp_login_stamp = GetTimeStamp()
     Scripter.savedVariables.usertemp_llogin = Scripter.GetGameTime() 
 
     -- start event engine
@@ -5079,3 +5227,5 @@ end
 --         end
 --     end
 -- end
+
+
