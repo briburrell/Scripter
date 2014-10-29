@@ -9,7 +9,7 @@ Functions
 
 Create and execute LUA functions from inside the game. Several examples and an easy to use interface makes a novice capable of running there own code.
 
-#### Reference: The [Scripting API](Scripting-API) provides a list of the core functions available.
+#### Reference: The [Scripting API](https://github.com/neonatura/Scripter/wiki/Scripting-API) provides a list of the core functions available.
 
 Triggers
 ========
@@ -38,7 +38,7 @@ Provides the ability to create new, and manage existing, slash comments. All com
 Synchronization
 ===============
 
-Character attributes, craft traits, skills, worn items, and quests can optionally be synchronized between players in order to review a friend's character information. [Synchronization](Synchronization) can be configured to be performed manually or automatically.
+Character attributes, craft traits, skills, worn items, and quests can optionally be synchronized between players in order to review a friend's character information. [Synchronization](https://github.com/neonatura/Scripter/wiki/Synchronization) can be configured to be performed manually or automatically.
 
 Addon Compatibility
 ===================
