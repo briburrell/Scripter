@@ -1,11 +1,10 @@
-Scripter
-========
 
 The Scripter addon provides a text UI to common ESO operations and provides ongoing notification of game events. See the Commands section below for the full list of commands available.
 
 Source Code: https://github.com/neonatura/Scripter.git
 
 Triggers
+========
 
 The addon provides the following automatic triggers. All triggers can be disabled via the Addon configuration.
 
@@ -15,6 +14,7 @@ The addon provides the following automatic triggers. All triggers can be disable
 - Create persistent or temporary timed events.
 
 Notifications
+=============
 
 All notifications are displayed in a seperate UI window. The notification window can be disabled via the Addon configuration. The main event categories can be disabled individually.
 
@@ -27,14 +27,17 @@ Alias
 Provides the ability to create new, and manage existing, slash comments. All commands can be given a description for enhanced display in the "/cmd" command.
 
 Synchronization
+===============
 
 Character attributes, craft traits, skills, worn items, and quests can optionally be synchronized between players in order to review a friend's character information. Synchronization can be configured to be performed manually or automatically.
 
 Addon Compatibility
+===================
 
 All Scripter commands, except for "alias" and the commands generated from such, are compatible with the Wykkyd's Macros addon.
 
 Commands
+========
 
 /alias Create and manage slash commands.
 /away Manage "away from keyboard" mode.
