@@ -39,7 +39,7 @@ ScripterGui = {
 --			style = ""
 --		},
 		minAlpha = 0,
-		maxAlpha = 0.4,
+		maxAlpha = 0.5,
 		fadeInDelay = 0,
 		--fadeOutDelay = 15000,
 		fadeDuration = 1500,
@@ -102,6 +102,7 @@ function ScripterGui.CreateWindow( )
 		ScripterGui.setBufferMax()
 		ScripterGui.window.TEXTBUFFER:SetDimensions(savedVars_ScripterGui.dimensions.width-64, savedVars_ScripterGui.dimensions.height-64)
 		ScripterGui.window.TEXTBUFFER:SetAnchor(TOPLEFT,ScripterGui.window.ID,TOPLEFT,32,32)
+	    ScripterGui.window.TEXTBUFFER:SetHidden(false)
 	
 		ScripterGui.window.BACKDROP = WINDOW_MANAGER:CreateControl(nil, ScripterGui.window.ID, CT_BACKDROP)
 		ScripterGui.window.BACKDROP:SetCenterTexture([[/esoui/art/chatwindow/chat_bg_center.dds]], 16, 1)

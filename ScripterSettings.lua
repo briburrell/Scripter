@@ -8,11 +8,12 @@ OPT_AUTOBIND = "autobind"
 OPT_DEBUG = "debug"
 OPT_FADEOUT = "fadeout"
 OPT_JUNKMODE = "junkmode"
-OPT_LOG_MAX = "log_max"
+OPT_LOG_MAX = "log_line_max"
 OPT_CHAT_FOCUS = "chat_focus"
 OPT_CHAT_MAX = "chat_max"
+OPT_AUTOAFK = "autoafk"
 OPT_CHAT_SUPPRESS = "chat_suppress"
-OPT_NOTIFY = "notify"
+OPT_NOTIFY_WIN = "notify_win"
 OPT_NOTIFY_BOOK = "notify_book"
 OPT_NOTIFY_MONEY = "notify_money"
 OPT_NOTIFY_INVENTORY = "notify_inventory"
@@ -32,6 +33,8 @@ OPT_SYNC_SKILL = "sync_skill"
 OPT_SYNC_CRAFT = "sync_craft"
 OPT_CHAT_FONT = "chat_font_name"
 OPT_CHAT_FONT_SIZE = "chat_font_size"
+OPT_CMD_FEEDBACK = "cmd_feedback"
+OPT_CMD_AFK = "cmd_afk"
 
 local settings = { }
 
@@ -47,8 +50,9 @@ local default_settings = {
     [OPT_LOG_MAX] = 40,
     [OPT_CHAT_FOCUS] = true,
     [OPT_CHAT_MAX] = 50,
+    [OPT_AUTOAFK] = false,
     [OPT_CHAT_SUPPRESS] = false,
-    [OPT_NOTIFY] = true,
+    [OPT_NOTIFY_WIN] = true,
     [OPT_NOTIFY_BOOK] = true,
     [OPT_NOTIFY_MONEY] = true,
     [OPT_NOTIFY_INVENTORY] = true,
@@ -66,6 +70,8 @@ local default_settings = {
     [OPT_SYNC_ITEM] = false,
     [OPT_SYNC_CRAFT] = true,
     [OPT_SYNC_SKILL] = true,
+    [OPT_CMD_FEEDBACK] = "sfeedback",
+    [OPT_CMD_AFK] = "away",
 }
 
 local settingsLabel = {
@@ -80,8 +86,9 @@ local settingsLabel = {
     [OPT_CHAT_FONT_SIZE] = "The font size to display text in the chat window.",
     [OPT_CHAT_FOCUS] = "Retain focus after a command is performed.",
     [OPT_CHAT_MAX] = "Number of chat log lines to list.",
-    [OPT_CHAT_SUPPRESS] = "Disabling incoming chat when in 'Do not disturb' mode.",
-    [OPT_NOTIFY] = "Enable automatic text notification window.",
+    [OPT_AUTOAFK] = "Transition to 'Online' character mode when active.",
+    [OPT_CHAT_SUPPRESS] = "Disable incoming chat when in 'Do Not Disturb' mode.",
+    [OPT_NOTIFY_WIN] = "Enable automatic text notification window.",
     [OPT_NOTIFY_BOOK] = "Enable automatic book notifications.",
     [OPT_NOTIFY_MONEY] = "Enable automatic monetary notifications.",
     [OPT_NOTIFY_INVENTORY] = "Enable automatic inventory notifications.",
@@ -99,16 +106,12 @@ local settingsLabel = {
     [OPT_SYNC_DELETE] = "Delete synchronization mail notifications.",
     [OPT_SYNC_QUEST] = "Enable receiving of character quest information.",
     [OPT_SYNC_SKILL] = "Enable receiving of character skill information.",
+    [OPT_CMD_FEEDBACK] = "Set the feedback slash command name.",
+    [OPT_CMD_AFK] = "Set the 'Away from Keyboard' slash command name.",
 }
 
 local fontFilePath = {
-    ["Arial Narrow"] = "EsoUI/Common/Fonts/arialn.ttf",
     ["Consolas"] = "EsoUI/Common/Fonts/consola.ttf",
-    ["ESO Cartographer"] = "EsoUI/Common/Fonts/esocartographer-bold.otf",
-    ["Fontin Bold"] = "EsoUI/Common/Fonts/fontin_sans_b.otf",
-    ["Fontin Italic"] = "EsoUI/Common/Fonts/fontin_sans_i.otf",
-    ["Fontin Regular"] = "EsoUI/Common/Fonts/fontin_sans_r.otf",
-    ["Fontin SmallCaps"] = "EsoUI/Common/Fonts/fontin_sans_sc.otf",
     ["Futura Condensed"] = "EsoUI/Common/Fonts/futurastd-condensed.otf",
     ["Futura Light"] = "EsoUI/Common/Fonts/futurastd-condensedlight.otf",
     ["ProseAntique"] = "EsoUI/Common/Fonts/ProseAntiquePSMT.otf",
@@ -246,12 +249,16 @@ function ScripterSettings:CreateOptionsMenu()
         [9] = {
             type = "checkbox",
             name = "Notification Window",
-            tooltip = settingsLabel[OPT_LOG_MAX],
+            tooltip = settingsLabel[OPT_NOTIFY_WIN],
             getFunc = function() 
-	    	return self:GetValue(OPT_LOG_MAX)
+	    	return self:GetValue(OPT_NOTIFY_WIN)
             end,
             setFunc = function(value)
-                self:SetValue(OPT_LOG_MAX, value)
+                self:SetValue(OPT_NOTIFY_WIN, value)
+		if value == false then
+		    self:SetValue(OPT_NOTIFY_BG, false)
+                    ScripterGui.setBackgroundHidden(true)
+                end
             end
         },
         [10] = {
@@ -487,7 +494,18 @@ function ScripterSettings:CreateOptionsMenu()
         },
         [31] = {
             type = "checkbox",
-            name = "Suppress chat in 'Do not disturb' mode.",
+            name = "AFK: Auto go 'Online' when active.",
+            tooltip = settingsLabel[OPT_AUTOAFK],
+            getFunc = function() 
+	    	return self:GetValue(OPT_AUTOAFK)
+            end,
+            setFunc = function(value)
+                self:SetValue(OPT_AUTOAFK, value)
+            end
+        },
+        [32] = {
+            type = "checkbox",
+            name = "Disable chat in 'Do not disturb' mode.",
             tooltip = settingsLabel[OPT_CHAT_SUPPRESS],
             getFunc = function() 
 	    	return self:GetValue(OPT_CHAT_SUPPRESS)
@@ -496,7 +514,7 @@ function ScripterSettings:CreateOptionsMenu()
                 self:SetValue(OPT_CHAT_SUPPRESS, value)
             end
         },
-        [32] = {
+        [33] = {
             type = "slider",
             name = "Chat Window Font Size",
 	    min = 6,
@@ -510,11 +528,43 @@ function ScripterSettings:CreateOptionsMenu()
                 self:InitializeChatWindowFont()
             end
         },
-        [33] = {
+        [34] = {
+            type = "header",
+            name = "Commands",
+        },
+        [35] = {
+            type = "dropdown",
+            name = "Feedback Command",
+	    choices = { "sfeedback", "submit" },
+            tooltip = settingsLabel[OPT_CMD_FEEDBACK],
+            getFunc = function() 
+	    	return self:GetValue(OPT_CMD_FEEDBACK)
+            end,
+            setFunc = function(value)
+	    	local cmd_name = self:GetValue(OPT_CMD_FEEDBACK)
+                self:SetValue(OPT_CMD_FEEDBACK, value)
+		InitializeScripterFeedbackCommand(cmd_name)
+            end
+        },
+        [36] = {
+            type = "dropdown",
+            name = "AFK Command",
+	    choices = { "afk", "away", "busy" },
+            tooltip = settingsLabel[OPT_CMD_AFK],
+            getFunc = function() 
+	    	return self:GetValue(OPT_CMD_AFK)
+            end,
+            setFunc = function(value)
+		local cmd_name = self:GetValue(OPT_CMD_AFK)
+                self:SetValue(OPT_CMD_AFK, value)
+		InitializeScripterAFKCommand(cmd_name)
+            end
+        },
+        [37] = {
             type = "header",
             name = "Diagnostics",
         },
-        [34] = {
+        [38] = {
             type = "checkbox",
             name = "Debug Mode",
             tooltip = settingsLabel[OPT_DEBUG],

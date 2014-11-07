@@ -5,7 +5,6 @@ ScripterNote.default		= {
 	movable		= true,
 	width			= 400,
 	height		= 600,
-	hideNote		= false,
 	hideMainPanel 	= false,
 	text			= "Drag and drop the bottom right corner to change the dimensions \n\n No mousewheel interaction, use page up and page down, sorry :( \n\n The text is saved when you click outside the window"
 			}
@@ -14,7 +13,6 @@ NOTE_MODE_NONE = 0
 NOTE_MODE_FUNCTION = 1
 
 ScripterNote.movable = true
-ScripterNote.hideNote = false
 ScripterNote.moveCorner = false
 --ScripterNote.width = 200
 --ScripterNote.height = 400
@@ -25,7 +23,7 @@ ScripterNote.lastOffsetY = 2
 
 function ScripterNote.HideNote()
 	ScripterNotePanel:SetHidden(true)
-	ScripterNoteEditBox:SetEditEnabled(false)
+--	ScripterNoteEditBox:SetEditEnabled(false)
 end
 
 function InitScripterNoteWindow()
@@ -76,12 +74,10 @@ end
 ----	ScripterNote.SetHidden(ScripterNote.vars.hideMainPanel)
 --end
 
-function ScripterNote.OnReticleHidden(eventCode, hidden)
-	ScripterNoteEditBox:SetEditEnabled(hidden)
-end
-
-
-EVENT_MANAGER:RegisterForEvent("ScripterNote" , EVENT_RETICLE_HIDDEN_UPDATE, function(_event, _hidden) ScripterNote.OnReticleHidden(_event, _hidden) end)
+--function ScripterNote.OnReticleHidden(eventCode, hidden)
+--	ScripterNoteEditBox:SetEditEnabled(hidden)
+--end
+--EVENT_MANAGER:RegisterForEvent("ScripterNote" , EVENT_RETICLE_HIDDEN_UPDATE, function(_event, _hidden) ScripterNote.OnReticleHidden(_event, _hidden) end)
 
 function ScripterNoteUpdate()
 	if not ScripterNote.moveCorner then
@@ -91,19 +87,12 @@ function ScripterNoteUpdate()
 	ScripterNote.UpdateNoteDimension()
 end
 
---function ScripterNoteToggleNote()
---	ScripterNote.hideNote = not ScripterNote.hideNote
---	ScripterNote.vars.hideNote = ScripterNote.hideNote
---	ScripterNote.UpdateNoteVisibility()
---end
-
---function ScripterNote.UpdateNoteVisibility()
---	ScripterNotePanel:SetHidden(ScripterNote.hideNote)
---end
-
 function ScripterNote.ShowNote()
-	ScripterNoteEditBox:SetEditEnabled(true)
-	ScripterNotePanel:SetHidden(false)
+	if ScripterNotePanel:IsHidden() == true then
+		ScripterNotePanel:SetHidden(false)
+	end
+	--ScripterNoteEditBox:SetMouseEnabled(true)
+	ScripterNoteEditBox:SetKeyboardEnabled(true)
 	ScripterNoteEditBox:TakeFocus()
 end
 function ScripterNote.SetNoteText(text)
@@ -133,9 +122,8 @@ function ScripterNote.InitNotePanel()
 	
 	ScripterNoteCorner:ClearAnchors()
 	ScripterNoteCorner:SetAnchor(BOTTOMRIGHT,ScripterNoteBG ,BOTTOMRIGHT, ScripterNote.offsetX, ScripterNote.offsetY)
-	
-	ScripterNote.hideNote = ScripterNote.vars.hideNote
---	ScripterNote.UpdateNoteVisibility()
+
+	ScripterNoteEditBox:SetEditEnabled(true)
 end
 
 function ScripterNote.SaveNotePanel()

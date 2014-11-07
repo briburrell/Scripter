@@ -1,3 +1,13 @@
+[11/04/2014] Release: v2.03 submitted
+[11/04/2014] Fix: Config dialog exception & removed deprecated fonts.
+[11/04/2014] Release: v2.02 submitted
+[11/04/2014 #540] New: Functions triggered by game events. 
+[11/04/2014] New: /feedback -> /sfeedback, config option to remap name
+[11/04/2014] New: config option to remap 'afk' command name
+[11/03/2014] Release: v2.01 submitted
+[11/02/2014] Added compatibility for ESO release update 5.
+[10/29/2014] Release: v2.00 submitted
+[10/28/2014] New: /func - Create and execute LUA functions. 
 [10/26/2014] Release: v1.99 submitted
 [10/26/2014 #554] New: /clear - Clear the chat window.
 [10/26/2014 #555] New: /loc /area - Show points of interest for zone.

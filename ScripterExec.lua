@@ -4,6 +4,7 @@
 
 local ScriptCommand = SLASH_COMMANDS["/script"]
 local DataBlock = LibStub("LibDataBlock-1.0")
+local datablock_obj 
 
 -- script parameters
 s_args = {}
@@ -11,6 +12,10 @@ s_arg = ""
 
 function si_round(value)
 	return zo_round(value)
+end
+
+function si_highlight(text)
+	return "|cff8f41" .. text .. "|r"
 end
 
 function si_formatcord(cord)
@@ -32,6 +37,53 @@ function si_char_area(alternative)
 	return select(3,(GetMapTileTexture()):lower():find("maps/([%w%-]+)/([%w%-]+_[%w%-]+)"))
 end
 
+function si_cord_dist(x, y)
+	local plrX, plrY = GetMapPlayerPosition('player')
+	local distX = zo_abs(si_formatmeter(x - plrX)) 
+	local distY = zo_abs(si_formatmeter(y - plrY)) 
+	return (distX + distY) / 2
+end
+
+function si_cord_dir(x, y)
+    local plrX, plrY = GetMapPlayerPosition('player')
+    if (plrX == nil or plrY == nil) then return "" end
+
+    local locX = si_formatmeter(plrX)
+    local locY = si_formatmeter(plrY)
+
+    x = si_formatmeter(x)
+    y = si_formatmeter(y)
+
+    local east = false
+    local north = false
+    local west = false
+    local south = false
+    if locX < x then east = true end
+    if locY > y then north = true end
+    if locX > x then west = true end
+    if locY < y then south = true end
+
+    if (north == true and east == true) then 
+        return "NE"
+    elseif (north == true and west == true) then
+        return "NW"
+    elseif (south == true and east == true) then
+        return "SE"
+    elseif (south == true and west == true) then
+        return "SW"
+    elseif north == true then
+        return "N"
+    elseif south == true then
+        return "S"
+    elseif east == true then
+        return "E"
+    elseif west == true then
+        return "W"
+    end
+
+    return ""
+end
+
 function si_char_location()
 	local zone, subzone = si_char_area()
 	local x, y = GetMapPlayerPosition('player')
@@ -41,34 +93,59 @@ function si_char_location()
 	loc.x = si_formatcord(x)
 	loc.y = si_formatcord(y)
 	loc.area = subdesc
-	loc.areaId = subzone
+	loc.subzone = subdesc
 	loc.zone = zone
 
 	return loc
 end
 
-function si_db_init()
-	local data = DataBlock:GetDataObjectByName("Scripter")
+function si_location_text(loc)
+        if loc == nil then loc = si_char_location() end
+	if (loc.x == nil or loc.y == nil) then return "" end
 
-	if data == nil then 
-		data = GetScripterValue("userdata_db")
-		if data == nil then data = {} end
+	local text = ""
+	local dist = 0
+
+	if (loc.zone ~= nil and loc.subzone ~= nil) then
+		text = text .. si_highlight(loc.zone) .. " of " .. loc.subzone
+	end
+	if loc.subzone == GetMapName() then
+		dist = si_cord_dist(loc.x, loc.y)
+	end
+	text = text .. " ["
+	if dist ~= 0 then
+		text = text .. dist .. "m " .. si_cord_dir(loc.x, loc.y) .. " "
+	end
+	text = text .. si_cord(loc.x, loc.y)
+	text = text .. "]"
+
+	return text
+end
+
+function si_db_init()
+        if datablock_obj == nil then 
+		datablock_obj = DataBlock:GetDataObjectByName("Scripter")
+                if datablock_obj == nil then
+			datablock_obj = DataBlock:NewDataObject("Scripter", data)
+		end
+		if datablock_obj.userdata == nil then datablock_obj.userdata = {} end
+		local vars = GetScripterValue(VAL_USERDATA_DB)
+		for k, v in pairs(vars) do
+			datablock_obj.userdata[k] = v
+		end
 	end
 
-	return data
+	return datablock_obj.userdata
 end
 
 function si_db_set(token, value)
 	local data = si_db_init()
-
 	data[token] = value
-	SetScripterValue("userdata_db", data)
-	DataBlock:NewDataObject("Scripter", data)
+	SetScripterValue(VAL_USERDATA_DB, data)
 end
 
 function si_db_get(token)
 	local data = si_db_init()
-
 	return data[token]
 end
 
@@ -81,7 +158,11 @@ function si_exec(text, argtext)
 	if argtext == nil then argtext = "" end
 
 	s_args = argtext
-	s_arg = si_strsplit(" ", s_args)
+	if type(argtext) == "string" then
+		s_arg = si_strsplit(" ", argtext)
+	else
+		s_arg = argtext
+	end
 	ScriptCommand(text)
 end
 
@@ -124,7 +205,10 @@ end
 function si_chat_print(...)
 	if CHAT_SYSTEM == nil then return end
 
-	local buffer = CHAT_SYSTEM["containers"][1]["currentBuffer"]
+	local buffer = nil
+	if (CHAT_SYSTEM["containers"] and CHAT_SYSTEM["containers"][1]) then
+           buffer = CHAT_SYSTEM["containers"][1]["currentBuffer"]
+        end
 	local text = si_color(1,1,1) .. si_strjoin("", ...) .. "|r"
 	if buffer ~= nil then
 		buffer:AddMessage(text)
@@ -251,8 +335,7 @@ function s_pr_cord(loc)
 end
 
 function s_pr_loc(loc)
-	-- unimplemented
-	return "" 
+	return si_location_text(loc)
 end
 
 function s_call(func, argtext)
@@ -274,7 +357,7 @@ function s_set(token, value)
 end
 
 function s_get(token)
-  if token == nil then return "" end
+	if token == nil then return "" end
 
 	local data = si_db_get(token)
 	if data == nil then data = "" end
